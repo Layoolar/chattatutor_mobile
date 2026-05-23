@@ -260,6 +260,22 @@ export default function LessonFlashcardsScreen() {
                     </Pressable>
                   ) : null}
                   <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: "/lesson/[pdfId]/[lessonIndex]/quiz",
+                        params: {
+                          pdfId: String(pdfId),
+                          lessonIndex: String(index),
+                          flashcardsReady: "1",
+                        },
+                      })
+                    }
+                    className="h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-900 active:bg-slate-800"
+                  >
+                    <ChevronRight size={16} color="#ffffff" />
+                    <Text className="text-sm font-semibold text-white">Continue to quiz</Text>
+                  </Pressable>
+                  <Pressable
                     onPress={restartDeck}
                     className="h-12 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white active:bg-slate-50"
                   >
@@ -268,10 +284,10 @@ export default function LessonFlashcardsScreen() {
                   </Pressable>
                   <Pressable
                     onPress={() => router.back()}
-                    className="h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-900 active:bg-slate-800"
+                    className="h-12 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white active:bg-slate-50"
                   >
-                    <ChevronRight size={16} color="#ffffff" />
-                    <Text className="text-sm font-semibold text-white">Back to lesson</Text>
+                    <ChevronRight size={16} color="#0f172a" />
+                    <Text className="text-sm font-semibold text-slate-900">Back to lesson</Text>
                   </Pressable>
                 </View>
               </View>

@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
   BookOpen,
-  CheckCircle2,
   ListChecks,
   Sparkles,
   Zap,
@@ -14,7 +13,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { RichContent } from "@/components/RichContent";
 import { GradientIcon } from "@/components/GradientIcon";
 import { useToast } from "@/lib/toast";
-import { getLesson, markLectureComplete, type Lesson } from "@/lib/api";
+import { getLesson, type Lesson } from "@/lib/api";
 
 export default function LessonDetailScreen() {
   const router = useRouter();
@@ -27,10 +26,7 @@ export default function LessonDetailScreen() {
   const index = Number(lessonIndex ?? 0);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
-  const [marking, setMarking] = useState(false);
-  const [completed, setCompleted] = useState(false);
   const hasFlashcards = (lesson?.flashcards?.length ?? 0) > 0;
-  const hasQuizQuestions = (lesson?.quizQuestions?.length ?? 0) > 0;
 
   useEffect(() => {
     if (!pdfId || Number.isNaN(index)) return;
@@ -44,20 +40,6 @@ export default function LessonDetailScreen() {
         setLoading(false);
       }
     })();
-  }, [pdfId, index, toast]);
-
-  const handleMarkComplete = useCallback(async () => {
-    if (!pdfId) return;
-    setMarking(true);
-    try {
-      await markLectureComplete(pdfId, index);
-      setCompleted(true);
-      toast.success("Lecture marked complete");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't mark complete");
-    } finally {
-      setMarking(false);
-    }
   }, [pdfId, index, toast]);
 
   return (
@@ -200,7 +182,8 @@ export default function LessonDetailScreen() {
 
       {!loading && lesson ? (
         <View className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white px-4 py-3">
-          <View className="flex-row gap-2">
+          <View className="gap-3">
+            <View className="flex-row gap-2">
             <Pressable
               onPress={() =>
                 router.push({
@@ -221,26 +204,31 @@ export default function LessonDetailScreen() {
               </Text>
             </Pressable>
             <Pressable
-              disabled
-              className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-100 opacity-60"
+              onPress={() =>
+                router.push({
+                  pathname: "/lesson/[pdfId]/[lessonIndex]/quiz",
+                  params: {
+                    pdfId: String(pdfId),
+                    lessonIndex: String(index),
+                    flashcardsReady: hasFlashcards ? "1" : "0",
+                  },
+                })
+              }
+              className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-900 active:bg-slate-800"
             >
-              <ListChecks size={16} color="#64748b" />
-              <Text className="text-sm font-semibold text-slate-500">
-                {hasQuizQuestions ? "Quiz soon" : "No quiz"}
-              </Text>
+              <ListChecks size={16} color="#ffffff" />
+              <Text className="text-sm font-semibold text-white">Quiz</Text>
             </Pressable>
-            <Pressable
-              onPress={handleMarkComplete}
-              disabled={marking || completed}
-              className={`flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full ${
-                completed ? "bg-emerald-600" : "bg-slate-900 active:bg-slate-800"
-              } ${marking ? "opacity-60" : ""}`}
-            >
-              <CheckCircle2 size={16} color="#ffffff" />
-              <Text className="text-sm font-semibold text-white">
-                {completed ? "Done" : marking ? "Saving…" : "Mark done"}
+            </View>
+
+            <View className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+              <Text className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                Completion
               </Text>
-            </Pressable>
+              <Text className="mt-1 text-sm leading-5 text-indigo-900">
+                Lessons complete automatically when you score 80% or higher on the quiz. If this lesson's questions are still generating, the quiz screen will tell you.
+              </Text>
+            </View>
           </View>
         </View>
       ) : null}

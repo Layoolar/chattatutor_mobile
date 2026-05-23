@@ -113,12 +113,21 @@ export default function CourseDetailScreen() {
     lessons.length > 0 ? Math.round((completedLessons / lessons.length) * 100) : 0;
   const progressWidth = lessons.length > 0 ? (completedLessons / lessons.length) * 100 : 0;
   const focusTitle = isComplete
-    ? "Everything is unlocked"
+    ? "Boss quiz is unlocked"
     : currentLesson?.title ?? "Your next lesson is ready";
   const focusPreview = isComplete
-    ? "Revisit any lesson, shore up weak spots, and finish strong with the boss quiz when you want the full mastery check."
+    ? "You cleared every lesson. Take the final multi-lesson assessment to pressure-test retention across the whole course."
     : getLessonPreview(currentLesson ?? lessons[0]);
-  const focusActionLabel = isComplete ? "Review last lesson" : `Continue lesson ${displayDay}`;
+  const focusActionLabel = isComplete ? "Enter boss quiz" : `Continue lesson ${displayDay}`;
+
+  const openBossQuiz = () => {
+    if (!pdfId) return;
+
+    router.push({
+      pathname: "/course/[pdfId]/boss-quiz",
+      params: { pdfId: String(pdfId) },
+    });
+  };
 
   const openLesson = (lessonIndex: number) => {
     if (!pdfId) return;
@@ -127,6 +136,15 @@ export default function CourseDetailScreen() {
       pathname: "/lesson/[pdfId]/[lessonIndex]",
       params: { pdfId: String(pdfId), lessonIndex: String(lessonIndex) },
     });
+  };
+
+  const openPrimaryFocus = () => {
+    if (isComplete) {
+      openBossQuiz();
+      return;
+    }
+
+    openLesson(currentLessonIndex);
   };
 
   return (
@@ -305,7 +323,7 @@ export default function CourseDetailScreen() {
               </View>
 
               <Pressable
-                onPress={() => openLesson(currentLessonIndex)}
+                onPress={openPrimaryFocus}
                 className="rounded-3xl border border-slate-200 bg-white p-5"
                 style={{
                   shadowColor: "#0f172a",
@@ -369,7 +387,7 @@ export default function CourseDetailScreen() {
                     <Text className="text-sm font-semibold text-white">{focusActionLabel}</Text>
                     <Text className="mt-1 text-xs text-indigo-100">
                       {isComplete
-                        ? "Open the latest lesson and keep retention high."
+                        ? "Open the final assessment and test cross-lesson mastery."
                         : "Jump straight into the next unlocked lesson without scanning the list."}
                     </Text>
                   </View>
@@ -545,8 +563,12 @@ export default function CourseDetailScreen() {
                 })}
               </View>
 
-              <View
-                className="overflow-hidden rounded-3xl bg-slate-900 p-5"
+              <Pressable
+                onPress={openBossQuiz}
+                disabled={!isComplete}
+                className={`overflow-hidden rounded-3xl bg-slate-900 p-5 ${
+                  isComplete ? "active:opacity-90" : ""
+                }`}
                 style={{
                   shadowColor: "#0f172a",
                   shadowOpacity: 0.12,
@@ -578,7 +600,21 @@ export default function CourseDetailScreen() {
                     </Text>
                   </View>
                 </View>
-              </View>
+
+                {isComplete ? (
+                  <View className="mt-4 flex-row items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+                    <View className="flex-1 pr-3">
+                      <Text className="text-sm font-semibold text-white">Start boss quiz</Text>
+                      <Text className="mt-1 text-xs text-white/70">
+                        20 mixed questions pulled across the whole course.
+                      </Text>
+                    </View>
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-white/15">
+                      <ChevronRight size={18} color="#ffffff" />
+                    </View>
+                  </View>
+                ) : null}
+              </Pressable>
             </>
           )}
         </View>

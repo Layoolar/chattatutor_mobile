@@ -130,6 +130,78 @@ export interface LessonQuizQuestion {
   explanation?: string;
 }
 
+export const QUIZ_PASS_MARK = 80;
+
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  explanation?: string;
+}
+
+export interface QuizResultDetail {
+  questionIndex: number;
+  correct: boolean;
+  selectedIndex?: number;
+}
+
+export interface BossQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex?: number;
+  explanation?: string | null;
+}
+
+export interface QuizSubmissionResult {
+  score: number;
+  correctCount: number;
+  total: number;
+  details: QuizResultDetail[];
+  progress: LessonProgress;
+  bossQuestion?: BossQuestion | null;
+  personalizedHook?: string | null;
+}
+
+export interface BossQuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  lessonTitle: string;
+}
+
+export type BossQuizTier = "standard" | "evolved" | "apex" | "true";
+
+export interface BossQuizPayload {
+  questions: BossQuizQuestion[];
+  total: number;
+  tier: BossQuizTier;
+  timeLimit: number | null;
+  attempt: number;
+}
+
+export interface BossQuizResultDetail {
+  questionId: string;
+  correct: boolean;
+  selectedIndex: number;
+  correctIndex?: number;
+}
+
+export interface BossQuizResult {
+  score: number;
+  correctCount: number;
+  total: number;
+  details: BossQuizResultDetail[];
+}
+
+export interface WeakConcept {
+  pdfId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  topics: string[];
+  masteryScore: number;
+}
+
 function isLessonLike(value: unknown): value is Lesson {
   if (!value || typeof value !== "object") {
     return false;
@@ -212,6 +284,68 @@ function normalizeFlashcard(
     front,
     back,
     tags: flashcard.tags,
+  };
+}
+
+function normalizeQuizQuestion(
+  question: LessonQuizQuestion,
+  index: number,
+): QuizQuestion | null {
+  const prompt =
+    typeof question.question === "string" ? question.question.trim() : "";
+  const options = Array.isArray(question.options)
+    ? question.options
+        .map((option) =>
+          typeof option === "string" ? option.trim() : String(option ?? "").trim(),
+        )
+        .filter((option) => option.length > 0)
+    : [];
+
+  if (!prompt || options.length < 2) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof question.id === "string" && question.id.trim().length > 0
+        ? question.id
+        : `quiz-${index}-${prompt.slice(0, 24)}`,
+    question: prompt,
+    options,
+    explanation: question.explanation,
+  };
+}
+
+function normalizeBossQuizQuestion(
+  question: BossQuizQuestion,
+  index: number,
+): BossQuizQuestion | null {
+  const prompt =
+    typeof question.question === "string" ? question.question.trim() : "";
+  const options = Array.isArray(question.options)
+    ? question.options
+        .map((option) =>
+          typeof option === "string" ? option.trim() : String(option ?? "").trim(),
+        )
+        .filter((option) => option.length > 0)
+    : [];
+  const lessonTitle =
+    typeof question.lessonTitle === "string" && question.lessonTitle.trim().length > 0
+      ? question.lessonTitle.trim()
+      : `Lesson ${index + 1}`;
+
+  if (!prompt || options.length < 2) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof question.id === "string" && question.id.trim().length > 0
+        ? question.id
+        : `boss-${index}-${prompt.slice(0, 24)}`,
+    question: prompt,
+    options,
+    lessonTitle,
   };
 }
 
@@ -502,6 +636,56 @@ export async function getFlashcards(
     .filter((flashcard): flashcard is Flashcard => flashcard !== null);
 }
 
+export async function getQuizQuestions(
+  pdfId: string,
+  lessonIndex: number,
+): Promise<{ quizQuestions: QuizQuestion[]; personalBest: { score: number } | null }> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/quiz`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to fetch quiz questions");
+  }
+
+  const data = (await response.json()) as {
+    quizQuestions?: LessonQuizQuestion[];
+    personalBest?: { score: number } | null;
+  };
+
+  return {
+    quizQuestions: (data.quizQuestions ?? [])
+      .map((question, index) => normalizeQuizQuestion(question, index))
+      .filter((question): question is QuizQuestion => question !== null),
+    personalBest:
+      data.personalBest && typeof data.personalBest.score === "number"
+        ? { score: data.personalBest.score }
+        : null,
+  };
+}
+
+export async function submitQuiz(
+  pdfId: string,
+  lessonIndex: number,
+  answers: { selectedIndex: number }[],
+): Promise<QuizSubmissionResult> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/quiz`,
+    {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to submit quiz");
+  }
+
+  return response.json();
+}
+
 export async function recordFlashcardInteraction(
   pdfId: string,
   lessonIndex: number,
@@ -523,6 +707,62 @@ export async function recordFlashcardInteraction(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || "Failed to record flashcard interaction");
+  }
+
+  return response.json();
+}
+
+export async function getBossQuiz(pdfId: string): Promise<BossQuizPayload> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/boss-quiz`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to load boss quiz");
+  }
+
+  const data = (await response.json()) as BossQuizPayload;
+
+  return {
+    questions: (data.questions ?? [])
+      .map((question, index) => normalizeBossQuizQuestion(question, index))
+      .filter((question): question is BossQuizQuestion => question !== null),
+    total: typeof data.total === "number" ? data.total : data.questions?.length ?? 0,
+    tier: data.tier ?? "standard",
+    timeLimit: typeof data.timeLimit === "number" ? data.timeLimit : null,
+    attempt: typeof data.attempt === "number" ? data.attempt : 1,
+  };
+}
+
+export async function submitBossQuiz(
+  pdfId: string,
+  answers: { questionId: string; selectedIndex: number }[],
+): Promise<BossQuizResult> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/boss-quiz/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to grade boss quiz");
+  }
+
+  return response.json();
+}
+
+export async function getWeakConcepts(): Promise<{
+  weakConcepts: WeakConcept[];
+  message?: string;
+}> {
+  const response = await apiFetch(`${API_URL}/users/weak-concepts`);
+
+  if (!response.ok) {
+    return { weakConcepts: [] };
   }
 
   return response.json();

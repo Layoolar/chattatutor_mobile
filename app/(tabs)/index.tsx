@@ -8,6 +8,7 @@ import {
   Flame,
   Lightbulb,
   Sparkles,
+  Target,
   Trophy,
   Upload,
 } from "lucide-react-native";
@@ -15,8 +16,10 @@ import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import { GradientIcon } from "@/components/GradientIcon";
 import { useAuth } from "@/lib/auth-context";
+import { hasPremiumFeatureAccess } from "@/lib/premium-access";
 import { useToast } from "@/lib/toast";
 import {
+  getWeakConcepts,
   getMyPDFs,
   getUserActivity,
   getUserRank,
@@ -25,6 +28,7 @@ import {
   type PDF,
   type UserActivity,
   type UserRank,
+  type WeakConcept,
 } from "@/lib/api";
 
 interface CourseCard {
@@ -40,19 +44,25 @@ export default function DashboardHome() {
   const { user } = useAuth();
   const router = useRouter();
   const toast = useToast();
+  const hasPremiumAccess = hasPremiumFeatureAccess(user);
 
   const [activity, setActivity] = useState<UserActivity | null>(null);
   const [rank, setRank] = useState<UserRank | null>(null);
   const [courses, setCourses] = useState<CourseCard[]>([]);
+  const [weakConcepts, setWeakConcepts] = useState<WeakConcept[]>([]);
+  const [weakConceptsMessage, setWeakConceptsMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [a, r, plansResult, pdfsResult] = await Promise.allSettled([
+    const [a, r, plansResult, pdfsResult, weakConceptsResult] = await Promise.allSettled([
       getUserActivity(),
       getUserRank(),
       getUserStudyPlans(),
       getMyPDFs(),
+      hasPremiumAccess
+        ? getWeakConcepts()
+        : Promise.resolve({ weakConcepts: [] as WeakConcept[], message: undefined }),
     ]);
 
     if (a.status === "fulfilled") setActivity(a.value);
@@ -81,10 +91,18 @@ export default function DashboardHome() {
 
     setCourses(merged);
 
+    if (weakConceptsResult.status === "fulfilled") {
+      setWeakConcepts(weakConceptsResult.value.weakConcepts ?? []);
+      setWeakConceptsMessage(weakConceptsResult.value.message ?? null);
+    } else {
+      setWeakConcepts([]);
+      setWeakConceptsMessage(null);
+    }
+
     if (plansResult.status === "rejected" || pdfsResult.status === "rejected") {
       toast.error("Couldn't refresh your courses");
     }
-  }, [toast]);
+  }, [hasPremiumAccess, toast]);
 
   useEffect(() => {
     (async () => {
@@ -122,6 +140,18 @@ export default function DashboardHome() {
   const resumeCourseDisplayDay = resumeCourse ? getDisplayDay(resumeCourse) : 0;
   const resumeCourseProgress = resumeCourse ? getProgress(resumeCourse) : 0;
   const activeCourseCount = courses.filter((course) => !course.isComplete).length;
+  const weakestConcept = weakConcepts[0] ?? null;
+  const openWeakestConcept = () => {
+    if (!weakestConcept) return;
+
+    router.push({
+      pathname: "/lesson/[pdfId]/[lessonIndex]",
+      params: {
+        pdfId: weakestConcept.pdfId,
+        lessonIndex: String(weakestConcept.lessonIndex),
+      },
+    });
+  };
 
   return (
     <ScreenContainer scroll refreshing={refreshing} onRefresh={onRefresh}>
@@ -380,6 +410,87 @@ export default function DashboardHome() {
               </Text>
             </View>
           </View>
+
+          {hasPremiumAccess && weakConcepts.length > 0 ? (
+            <Pressable
+              onPress={openWeakestConcept}
+              className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 active:bg-slate-50"
+              style={{
+                shadowColor: "#0f172a",
+                shadowOpacity: 0.05,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 3,
+              }}
+            >
+              <View
+                pointerEvents="none"
+                className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-amber-100/70"
+              />
+              <View className="flex-row items-start gap-4">
+                <View className="h-12 w-12 rounded-2xl bg-amber-50 items-center justify-center">
+                  <Target size={22} color="#d97706" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+                    Premium gap analysis
+                  </Text>
+                  <Text className="mt-1 text-lg font-extrabold text-slate-900">
+                    Your weakest concepts right now
+                  </Text>
+                  <Text className="mt-2 text-sm leading-6 text-slate-600">
+                    These lessons are costing you the most mastery. Tap in and close the gaps while they are still fresh.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-4 gap-3">
+                {weakConcepts.slice(0, 3).map((concept) => (
+                  <View
+                    key={`${concept.pdfId}-${concept.lessonIndex}`}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <View className="flex-row items-start gap-3">
+                      <View className="flex-1">
+                        <Text className="text-sm font-bold text-slate-900" numberOfLines={2}>
+                          {concept.lessonTitle}
+                        </Text>
+                        <Text className="mt-1 text-xs text-slate-500" numberOfLines={2}>
+                          {concept.topics.length > 0
+                            ? concept.topics.slice(0, 3).join(" • ")
+                            : "Review drill ready"}
+                        </Text>
+                      </View>
+                      <View className="rounded-full bg-rose-50 px-3 py-1.5">
+                        <Text className="text-xs font-semibold text-rose-600">
+                          {Math.max(0, Math.round(concept.masteryScore / 10))}% mastery
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View className="mt-4 flex-row items-center justify-end gap-1">
+                <Text className="text-sm font-semibold text-amber-700">
+                  Jump into the weakest lesson
+                </Text>
+                <ArrowRight size={16} color="#b45309" />
+              </View>
+            </Pressable>
+          ) : hasPremiumAccess && weakConceptsMessage ? (
+            <View className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 gap-2 flex-row">
+              <Sparkles size={20} color="#4f46e5" />
+              <View className="flex-1">
+                <Text className="text-base font-bold text-slate-900">
+                  Gap analysis is warming up
+                </Text>
+                <Text className="text-sm text-slate-600 mt-1">
+                  {weakConceptsMessage}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* First-time empty state for users with zero courses */}
           {!resumeCourse && courses.length === 0 ? (

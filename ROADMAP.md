@@ -114,7 +114,7 @@ and read every lesson on their phone.
   - [x] Story hook callout
   - [x] Per-section structure: thesis, lecture, retrieval check
   - [x] Topic chips
-  - [x] Bottom-pinned CTAs (Flashcards/Quiz disabled until Phase 2, Mark done wired)
+  - [x] Bottom-pinned CTAs scaffolded (Flashcards live in Phase 2, Quiz pending, no manual completion button)
   - [ ] Full lesson-reader redesign, audio player, and SVG visuals (deferred to Phase 7 polish — they don't gate the core loop and may change once slider-based reading lands)
 
 ### Phase 2 — Practice & retention
@@ -125,11 +125,11 @@ Scope note: Phase 2 should ship the practice loop first, not lock in the final
 lesson-reader chrome. The current lesson screen can stay functional while we
 learn how quiz/flashcard behavior wants to sit on top of it.
 
-- [ ] **Flashcards** — Tinder-style swipe deck, tap to flip, rate "Hard / Good / Easy"
-- [ ] **Quiz** — MCQ, immediate feedback, streak indicator, animated reveal
-- [ ] **Quiz results** — score, weak concepts, "review weakest" CTA
-- [ ] **Boss quiz** — multi-lesson final, gates the course completion
-- [ ] **Weak concepts** card on Home that drills into review
+- [x] **Flashcards v1** — dedicated mobile deck, tap to flip, rate "Hard / Good / Easy", hard-card review pass, progress persistence
+- [x] **Quiz** — MCQ flow wired from the lesson screen, progress submitted to the backend, completion stays quiz-driven at 80%+
+- [x] **Quiz results** — score state, weakest missed prompts surfaced, review CTA back into lesson practice
+- [x] **Boss quiz** — multi-lesson final mastery check, unlocked from the course screen after all lessons are cleared
+- [x] **Weak concepts** card on Home that drills into review
 
 ### Phase 3 — Engagement loop
 
@@ -180,6 +180,7 @@ Friction-y to build, retention multiplier.
 - [ ] **Haptics** — streak gain, correct quiz, level up
 - [ ] **Reanimated** screen transitions + key interactions
 - [ ] **Lesson reader redesign** — move from the current stacked lecture layout to a more intentional slide/slider-style reading surface if the Phase 2 practice flows want it
+- [ ] **Flashcards polish** — Tinder-style swipe gestures, richer motion, haptics, and a more premium visual finish
 - [ ] **Practice surface polish** — align flashcards, quiz transitions, and lesson continuation UI into one cohesive interaction model
 - [ ] **Audio + SVG lesson enhancements** — fold richer media into the redesigned lesson reader instead of bolting them onto the current layout
 - [ ] **MMKV** offline cache for last-read lessons
