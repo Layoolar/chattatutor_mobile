@@ -115,13 +115,17 @@ and read every lesson on their phone.
   - [x] Per-section structure: thesis, lecture, retrieval check
   - [x] Topic chips
   - [x] Bottom-pinned CTAs (Flashcards/Quiz disabled until Phase 2, Mark done wired)
-  - [ ] Audio player + SVG visuals (deferred to Phase 7 polish — they don't gate the core loop)
+  - [ ] Full lesson-reader redesign, audio player, and SVG visuals (deferred to Phase 7 polish — they don't gate the core loop and may change once slider-based reading lands)
 
 ### Phase 2 — Practice & retention
 
 Lessons without practice = forgotten lessons.
 
-- [ ] **Flashcards** — swipe deck, tap to flip, rate "Hard / Good / Easy"
+Scope note: Phase 2 should ship the practice loop first, not lock in the final
+lesson-reader chrome. The current lesson screen can stay functional while we
+learn how quiz/flashcard behavior wants to sit on top of it.
+
+- [ ] **Flashcards** — Tinder-style swipe deck, tap to flip, rate "Hard / Good / Easy"
 - [ ] **Quiz** — MCQ, immediate feedback, streak indicator, animated reveal
 - [ ] **Quiz results** — score, weak concepts, "review weakest" CTA
 - [ ] **Boss quiz** — multi-lesson final, gates the course completion
@@ -175,6 +179,9 @@ Friction-y to build, retention multiplier.
 - [ ] **Universal / App Links** for verify-email + reset-password
 - [ ] **Haptics** — streak gain, correct quiz, level up
 - [ ] **Reanimated** screen transitions + key interactions
+- [ ] **Lesson reader redesign** — move from the current stacked lecture layout to a more intentional slide/slider-style reading surface if the Phase 2 practice flows want it
+- [ ] **Practice surface polish** — align flashcards, quiz transitions, and lesson continuation UI into one cohesive interaction model
+- [ ] **Audio + SVG lesson enhancements** — fold richer media into the redesigned lesson reader instead of bolting them onto the current layout
 - [ ] **MMKV** offline cache for last-read lessons
 - [ ] **expo-image** for image cache
 - [ ] **PostHog** parity with frontend (identify, capture)

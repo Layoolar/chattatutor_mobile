@@ -17,7 +17,11 @@ import { GradientIcon } from "@/components/GradientIcon";
 import { useToast } from "@/lib/toast";
 import { getStudyPlan, type Lesson, type StudyPlanResponse } from "@/lib/api";
 
-function getLessonPreview(lesson: Lesson): string {
+function getLessonPreview(lesson?: Lesson | null): string {
+  if (!lesson) {
+    return "Short, focused teaching with built-in recall and review.";
+  }
+
   const description = Array.isArray(lesson.description)
     ? lesson.description.find((entry) => entry.trim().length > 0)
     : lesson.description;

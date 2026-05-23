@@ -29,6 +29,8 @@ export default function LessonDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const hasFlashcards = (lesson?.flashcards?.length ?? 0) > 0;
+  const hasQuizQuestions = (lesson?.quizQuestions?.length ?? 0) > 0;
 
   useEffect(() => {
     if (!pdfId || Number.isNaN(index)) return;
@@ -200,18 +202,32 @@ export default function LessonDetailScreen() {
         <View className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white px-4 py-3">
           <View className="flex-row gap-2">
             <Pressable
-              disabled
-              className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-100 opacity-60"
+              onPress={() =>
+                router.push({
+                  pathname: "/lesson/[pdfId]/[lessonIndex]/flashcards",
+                  params: { pdfId: String(pdfId), lessonIndex: String(index) },
+                })
+              }
+              disabled={!hasFlashcards}
+              className={`flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full ${
+                hasFlashcards
+                  ? "bg-indigo-600 active:bg-indigo-700"
+                  : "bg-slate-100 opacity-60"
+              }`}
             >
-              <Zap size={16} color="#64748b" />
-              <Text className="text-sm font-semibold text-slate-500">Flashcards</Text>
+              <Zap size={16} color={hasFlashcards ? "#ffffff" : "#64748b"} />
+              <Text className={`text-sm font-semibold ${hasFlashcards ? "text-white" : "text-slate-500"}`}>
+                {hasFlashcards ? "Flashcards" : "No cards"}
+              </Text>
             </Pressable>
             <Pressable
               disabled
               className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-100 opacity-60"
             >
               <ListChecks size={16} color="#64748b" />
-              <Text className="text-sm font-semibold text-slate-500">Quiz</Text>
+              <Text className="text-sm font-semibold text-slate-500">
+                {hasQuizQuestions ? "Quiz soon" : "No quiz"}
+              </Text>
             </Pressable>
             <Pressable
               onPress={handleMarkComplete}

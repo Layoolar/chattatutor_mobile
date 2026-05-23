@@ -1,6 +1,6 @@
 import "../global.css";
 
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -82,6 +82,7 @@ export default function RootLayout() {
               <Stack.Screen name="topic-course" options={{ animation: "slide_from_bottom" }} />
               <Stack.Screen name="course/[pdfId]" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="lesson/[pdfId]/[lessonIndex]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="lesson/[pdfId]/[lessonIndex]/flashcards" options={{ animation: "slide_from_right" }} />
             </Stack>
           </AuthProvider>
         </ToastProvider>

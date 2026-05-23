@@ -97,10 +97,46 @@ export interface Lesson {
     correctIndex: number;
     explanation?: string;
   };
-  flashcards?: unknown[];
-  quizQuestions?: unknown[];
+  flashcards?: LessonFlashcard[];
+  quizQuestions?: LessonQuizQuestion[];
   visuals?: unknown[];
   sections?: LearningSection[];
+}
+
+export interface LessonFlashcard {
+  id?: string;
+  front?: string;
+  back?: string;
+  question?: string;
+  answer?: string;
+  tags?: string[];
+}
+
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  tags?: string[];
+}
+
+export type FlashcardRating = "hard" | "good" | "easy";
+
+export interface LessonQuizQuestion {
+  id?: string;
+  question: string;
+  options: string[];
+  answer?: string;
+  correctIndex?: number;
+  explanation?: string;
+}
+
+function isLessonLike(value: unknown): value is Lesson {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const lesson = value as Partial<Lesson>;
+  return typeof lesson.title === "string" || typeof lesson.description === "string" || Array.isArray(lesson.description);
 }
 
 export interface LearningSection {
@@ -131,18 +167,51 @@ export interface StudyPlanResponse {
 }
 
 function normalizeStudyPlanResponse(data: StudyPlanResponse): StudyPlanResponse {
-  const lessons =
+  const rawLessons =
     Array.isArray(data.plan) && data.plan.length > 0
       ? data.plan
       : Array.isArray(data.lessons)
         ? data.lessons
         : [];
+  const lessons = rawLessons.filter(isLessonLike);
 
   return {
     ...data,
     plan: lessons,
     lessons,
     totalDays: data.totalDays ?? lessons.length,
+  };
+}
+
+function normalizeFlashcard(
+  flashcard: LessonFlashcard,
+  index: number,
+): Flashcard | null {
+  const front =
+    typeof flashcard.front === "string"
+      ? flashcard.front.trim()
+      : typeof flashcard.question === "string"
+        ? flashcard.question.trim()
+        : "";
+  const back =
+    typeof flashcard.back === "string"
+      ? flashcard.back.trim()
+      : typeof flashcard.answer === "string"
+        ? flashcard.answer.trim()
+        : "";
+
+  if (!front || !back) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof flashcard.id === "string" && flashcard.id.trim().length > 0
+        ? flashcard.id
+        : `flashcard-${index}-${front.slice(0, 24)}`,
+    front,
+    back,
+    tags: flashcard.tags,
   };
 }
 
@@ -407,6 +476,55 @@ export async function getLesson(pdfId: string, lessonIndex: number): Promise<Les
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || "Failed to fetch lesson");
   }
+  return response.json();
+}
+
+export async function getFlashcards(
+  pdfId: string,
+  lessonIndex: number,
+): Promise<Flashcard[]> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/flashcards`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to fetch flashcards");
+  }
+
+  const data = (await response.json()) as
+    | { flashcards?: LessonFlashcard[] }
+    | LessonFlashcard[];
+  const rawFlashcards = Array.isArray(data) ? data : data.flashcards ?? [];
+
+  return rawFlashcards
+    .map((flashcard, index) => normalizeFlashcard(flashcard, index))
+    .filter((flashcard): flashcard is Flashcard => flashcard !== null);
+}
+
+export async function recordFlashcardInteraction(
+  pdfId: string,
+  lessonIndex: number,
+  flashcardId: string,
+  rating: FlashcardRating,
+): Promise<{ success: boolean; progress: LessonProgress }> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/flashcard`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        flashcardId,
+        rating,
+        correct: rating !== "hard",
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to record flashcard interaction");
+  }
+
   return response.json();
 }
 
