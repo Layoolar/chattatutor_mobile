@@ -90,7 +90,7 @@ export default function RootLayout() {
               <Stack.Screen name="quests" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="league" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="passport" options={{ animation: "slide_from_right" }} />
-              <Stack.Screen name="challenges" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/index" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="challenges/create" options={{ animation: "slide_from_bottom" }} />
               <Stack.Screen name="challenges/[id]" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="challenges/[id]/play" options={{ animation: "slide_from_bottom", gestureEnabled: false }} />
