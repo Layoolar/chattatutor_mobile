@@ -161,7 +161,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export async function changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
-  const token = getAuthTokenSync();
+  const token = getAuthTokenSync() ?? (await loadAuthToken());
   if (!token) throw new Error("Not authenticated");
 
   const response = await apiFetch(`${AUTH_URL}/change-password`, {

@@ -78,6 +78,10 @@ export default function RootLayout() {
               <Stack.Screen name="landing" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="upload" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="topic-course" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="course/[pdfId]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="lesson/[pdfId]/[lessonIndex]" options={{ animation: "slide_from_right" }} />
             </Stack>
           </AuthProvider>
         </ToastProvider>

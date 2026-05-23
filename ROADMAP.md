@@ -77,43 +77,45 @@ npx uri-scheme open "chattatutor:///reset-password?token=test" --ios
 To force a 401 and watch the auto-logout + toast: hit any authed screen with
 an expired token in SecureStore, or revoke the user server-side and pull-to-refresh.
 
-### Phase 1 — Core loop: PDF → Lessons **(MVP — nothing ships without this)**
+### Phase 1 — Core loop: PDF → Lessons ✅ DONE
 
-This is the killer feature. Until a user can upload a PDF and read its lessons
-on the phone, the app is brochureware.
+The killer feature. A user can now upload a PDF, watch it become a course,
+and read every lesson on their phone.
 
-- [ ] **Home tab — "Continue learning"**
-  - Active courses (horizontal swipe cards) with progress ring
-  - Big primary "Upload PDF" CTA
-  - Streak + daily-drill nudge (compact)
-  - Recently opened lesson tap-to-resume
-- [ ] **Lessons tab — "My library"**
-  - All courses (active + archived filter)
-  - Sort: recent / progress / title
-  - Search bar
-  - Long-press → archive / delete
-- [ ] **PDF upload screen** (modal or full screen)
-  - `expo-document-picker` → multipart upload with progress
-  - Validation: size, page count (free vs premium limits)
-  - Inline error states (network, too large, unsupported)
-- [ ] **Course generation status**
-  - Poll backend for status (or open WebSocket if backend supports)
-  - Animated step indicator: Extracting → Structuring → Generating lessons
-  - Allow background continue ("we'll notify you")
-  - Failure recovery (retry, contact support)
-- [ ] **Topic-based course** (port `TopicCourseModal`)
-  - Text input → backend topic generator
-  - Same generation status screen
-- [ ] **Course detail (lessons list per pdfId)**
-  - Cover, title, day/total, mastery summary
-  - Lesson rows with completion state
-  - "Boss quiz" button when all lessons complete
-- [ ] **Lesson detail**
-  - Rich content renderer (existing `prose-rich` CSS mapped to RN)
-  - Inline images with `expo-image` + caching
-  - Optional audio player (port `lecture-audio-player`)
-  - Optional SVG visual diagram (port `visual-diagram`)
-  - Bottom-pinned CTAs: "Flashcards", "Quiz", "Mark complete"
+- [x] **Home tab — "Continue learning"**
+  - [x] Dark hero card with progress bar for the most recent course
+  - [x] Big primary "Upload PDF" + secondary "Start from a topic" CTAs
+  - [x] Horizontal scroll strip of other active courses
+  - [x] Streak + rank compact cards
+  - [x] First-time empty-state nudge
+- [x] **Lessons tab — "My library"**
+  - [x] All active courses sorted by upload date
+  - [x] Progress bar per course
+  - [x] Tap → course detail
+  - [x] `+` button → upload
+  - [ ] Sort / search / long-press archive (deferred to Phase 1.5 if needed)
+- [x] **PDF upload screen** (`app/upload.tsx`)
+  - [x] `expo-document-picker` → presigned S3 PUT → backend complete
+  - [x] Real-time upload % progress bar
+  - [x] 50MB cap with user-visible error
+  - [x] Animated step indicator (Uploading → Generating → Ready)
+  - [x] Polls `getStudyPlan` every 5s until lessons appear, 5min ceiling
+  - [x] Failure recovery (cancel + restart, error surface)
+- [x] **Topic-based course** (`app/topic-course.tsx`)
+  - [x] Multi-line topic input with character min
+  - [x] Quick-pick suggestion chips
+  - [x] Submits to `/generate-topic-course`, routes straight to course
+- [x] **Course detail** (`app/course/[pdfId].tsx`)
+  - [x] Gradient cover header with progress bar
+  - [x] Lesson rows with current/locked/unlocked states
+  - [x] Boss-quiz teaser card
+- [x] **Lesson detail** (`app/lesson/[pdfId]/[lessonIndex].tsx`)
+  - [x] Rich HTML renderer matching frontend `prose-rich` styling (via `react-native-render-html`)
+  - [x] Story hook callout
+  - [x] Per-section structure: thesis, lecture, retrieval check
+  - [x] Topic chips
+  - [x] Bottom-pinned CTAs (Flashcards/Quiz disabled until Phase 2, Mark done wired)
+  - [ ] Audio player + SVG visuals (deferred to Phase 7 polish — they don't gate the core loop)
 
 ### Phase 2 — Practice & retention
 

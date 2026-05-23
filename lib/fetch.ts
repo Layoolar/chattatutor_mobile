@@ -1,4 +1,4 @@
-import { getAuthTokenSync } from "./auth-helpers";
+import { getAuthTokenSync, loadAuthToken } from "./auth-helpers";
 
 type UnauthorizedHandler = () => void;
 
@@ -31,11 +31,12 @@ export async function apiFetch(
   options: ApiFetchOptions = {},
 ): Promise<Response> {
   const { skipAuth, headers: customHeaders, body, ...rest } = options;
+  const method = (rest.method ?? "GET").toUpperCase();
 
   const headers: Record<string, string> = { ...(customHeaders ?? {}) };
 
   if (!skipAuth) {
-    const token = getAuthTokenSync();
+    const token = getAuthTokenSync() ?? (await loadAuthToken());
     if (token && !headers.Authorization) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -45,7 +46,17 @@ export async function apiFetch(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(input, { ...rest, headers, body });
+  // Personalized API reads should never use browser cache revalidation.
+  // Without this, study-plan fetches can reuse a stale cached empty payload
+  // after the backend starts returning lessons, which surfaces as "No lessons yet".
+  const requestInit: RequestInit = { ...rest, headers, body };
+  if (!skipAuth && (method === "GET" || method === "HEAD")) {
+    if (requestInit.cache === undefined) {
+      requestInit.cache = "no-store";
+    }
+  }
+
+  const response = await fetch(input, requestInit);
 
   if (response.status === 401 && !skipAuth) {
     fireUnauthorized();
