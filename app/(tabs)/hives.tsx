@@ -1,6 +1,7 @@
-import { Text, View } from "react-native";
 import { Users } from "lucide-react-native";
+import { Text, View } from "react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function HivesScreen() {
   return (
@@ -12,16 +13,12 @@ export default function HivesScreen() {
         </Text>
       </View>
 
-      <View className="bg-white rounded-2xl border border-slate-200 p-6 items-center gap-3 mt-6">
-        <View className="w-14 h-14 rounded-full bg-indigo-100 items-center justify-center">
-          <Users size={28} color="#4f46e5" />
-        </View>
-        <Text className="font-semibold text-slate-900">Coming soon</Text>
-        <Text className="text-sm text-slate-600 text-center">
-          Team list, member progress, invitations, and the Knowmad leaderboard will live
-          here. Backend support is already in place.
-        </Text>
-      </View>
+      <EmptyState
+        icon={Users}
+        title="Coming soon"
+        message="Teams, leaderboards, and challenges land in Phase 5. Backend endpoints are already in place."
+        gradient={{ from: "#f59e0b", to: "#f97316" }}
+      />
     </ScreenContainer>
   );
 }

@@ -1,6 +1,7 @@
-import { Text, View } from "react-native";
 import { MessageSquare } from "lucide-react-native";
+import { Text, View } from "react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function CommunityScreen() {
   return (
@@ -12,16 +13,12 @@ export default function CommunityScreen() {
         </Text>
       </View>
 
-      <View className="bg-white rounded-2xl border border-slate-200 p-6 items-center gap-3 mt-6">
-        <View className="w-14 h-14 rounded-full bg-indigo-100 items-center justify-center">
-          <MessageSquare size={28} color="#4f46e5" />
-        </View>
-        <Text className="font-semibold text-slate-900">Coming soon</Text>
-        <Text className="text-sm text-slate-600 text-center">
-          The announcements feed and suggestions board will be ported here. The backend
-          endpoints already exist — this screen just needs its UI built out.
-        </Text>
-      </View>
+      <EmptyState
+        icon={MessageSquare}
+        title="Coming soon"
+        message="The announcements feed and suggestions board land in Phase 5. Backend endpoints are already in place."
+        gradient={{ from: "#06b6d4", to: "#3b82f6" }}
+      />
     </ScreenContainer>
   );
 }

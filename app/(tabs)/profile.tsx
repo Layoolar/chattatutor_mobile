@@ -1,9 +1,11 @@
+import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { LogOut } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Button } from "@/components/Button";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast";
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -15,16 +17,30 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 }
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, refresh, signOut } = useAuth();
   const router = useRouter();
+  const toast = useToast();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't refresh profile");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh, toast]);
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace("/(auth)/login");
+    toast.success("Signed out");
+    router.replace("/landing");
   };
 
   return (
-    <ScreenContainer scroll>
+    <ScreenContainer scroll refreshing={refreshing} onRefresh={onRefresh}>
       <View className="pt-6 pb-4 gap-1">
         <Text className="text-2xl font-bold text-slate-900">Profile</Text>
         <Text className="text-sm text-slate-500">Account details and preferences.</Text>
@@ -50,7 +66,7 @@ export default function ProfileScreen() {
 
       <View className="flex-row items-center justify-center gap-2 mt-4 opacity-60">
         <LogOut size={14} color="#94a3b8" />
-        <Text className="text-xs text-slate-400">You'll be returned to the login screen.</Text>
+        <Text className="text-xs text-slate-400">You'll be returned to the landing screen.</Text>
       </View>
     </ScreenContainer>
   );

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Text, View } from "react-native";
 import { Flame, Sparkles, Trophy } from "lucide-react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast";
 import {
   getUserActivity,
   getUserRank,
@@ -36,30 +38,50 @@ function StatCard({ icon, label, value, tint }: StatCardProps) {
 
 export default function DashboardHome() {
   const { user } = useAuth();
+  const toast = useToast();
   const [activity, setActivity] = useState<UserActivity | null>(null);
   const [rank, setRank] = useState<UserRank | null>(null);
   const [tokens, setTokens] = useState<TokenUsageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    const [a, r, t] = await Promise.allSettled([
+      getUserActivity(),
+      getUserRank(),
+      getUserTokens(),
+    ]);
+    if (a.status === "fulfilled") setActivity(a.value);
+    if (r.status === "fulfilled") setRank(r.value);
+    if (t.status === "fulfilled") setTokens(t.value);
+    const firstFailure = [a, r, t].find((p) => p.status === "rejected");
+    if (firstFailure && firstFailure.status === "rejected") {
+      toast.error(
+        firstFailure.reason instanceof Error
+          ? firstFailure.reason.message
+          : "Couldn't refresh your stats",
+      );
+    }
+  }, [toast]);
 
   useEffect(() => {
     (async () => {
-      try {
-        const [a, r, t] = await Promise.allSettled([
-          getUserActivity(),
-          getUserRank(),
-          getUserTokens(),
-        ]);
-        if (a.status === "fulfilled") setActivity(a.value);
-        if (r.status === "fulfilled") setRank(r.value);
-        if (t.status === "fulfilled") setTokens(t.value);
-      } finally {
-        setLoading(false);
-      }
+      await load();
+      setLoading(false);
     })();
-  }, []);
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   return (
-    <ScreenContainer scroll>
+    <ScreenContainer scroll refreshing={refreshing} onRefresh={onRefresh}>
       <View className="pt-6 pb-4 gap-1">
         <Text className="text-sm text-slate-500">Welcome back</Text>
         <Text className="text-2xl font-bold text-slate-900">
@@ -68,8 +90,12 @@ export default function DashboardHome() {
       </View>
 
       {loading ? (
-        <View className="py-12 items-center">
-          <ActivityIndicator color="#4f46e5" />
+        <View className="gap-4">
+          <View className="flex-row gap-3">
+            <Skeleton.Card height={108} />
+            <Skeleton.Card height={108} />
+          </View>
+          <Skeleton.Card height={120} />
         </View>
       ) : (
         <View className="gap-4">

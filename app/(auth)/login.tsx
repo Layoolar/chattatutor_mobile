@@ -7,8 +7,10 @@ import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { ErrorMessage } from "@/components/ErrorMessage";
+import { GoogleButton } from "@/components/GoogleButton";
 import { login } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useGoogleSignIn } from "@/lib/google-auth";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -17,6 +19,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const google = useGoogleSignIn({ onError: setError });
 
   const handleSubmit = async () => {
     setError(null);
@@ -34,6 +38,14 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogle = async () => {
+    setError(null);
+    const res = await google.signIn();
+    if (!res) return;
+    await refresh();
+    router.replace("/(tabs)");
   };
 
   return (
@@ -98,6 +110,24 @@ export default function LoginScreen() {
           <ErrorMessage message={error} />
 
           <Button title={loading ? "Signing in..." : "Sign In"} loading={loading} onPress={handleSubmit} />
+
+          {google.enabled && (
+            <>
+              <View className="my-2 flex-row items-center gap-3">
+                <View className="h-px flex-1 bg-slate-200" />
+                <Text className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                  or continue with
+                </Text>
+                <View className="h-px flex-1 bg-slate-200" />
+              </View>
+
+              <GoogleButton
+                onPress={handleGoogle}
+                loading={google.inFlight}
+                disabled={!google.ready}
+              />
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </ScreenContainer>

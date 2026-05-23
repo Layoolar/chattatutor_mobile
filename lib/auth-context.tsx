@@ -6,6 +6,7 @@ import {
   logout as logoutHelper,
   type User,
 } from "./auth";
+import { onUnauthorized } from "./fetch";
 
 interface AuthContextValue {
   user: User | null;
@@ -37,6 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logoutHelper();
     setUser(null);
   }, []);
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      void signOut();
+    });
+  }, [signOut]);
 
   const value = useMemo(
     () => ({ user, loading, refresh, signOut }),

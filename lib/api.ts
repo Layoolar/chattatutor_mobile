@@ -1,10 +1,5 @@
 import { API_URL } from "./constants";
-import { getAuthTokenSync } from "./auth-helpers";
-
-function authHeaders(): Record<string, string> {
-  const token = getAuthTokenSync();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+import { apiFetch } from "./fetch";
 
 export interface PDF {
   id: string;
@@ -59,33 +54,33 @@ export interface PassportCourse {
 }
 
 export async function getMyPDFs(): Promise<PDF[]> {
-  const response = await fetch(`${API_URL}/my-pdfs`, { headers: authHeaders() });
+  const response = await apiFetch(`${API_URL}/my-pdfs`);
   if (!response.ok) throw new Error("Failed to fetch PDFs");
   const data = await response.json();
   return data.pdfs ?? [];
 }
 
 export async function getUserActivity(): Promise<UserActivity> {
-  const response = await fetch(`${API_URL}/users/activity`, { headers: authHeaders() });
+  const response = await apiFetch(`${API_URL}/users/activity`);
   if (!response.ok) throw new Error("Failed to fetch activity");
   return response.json();
 }
 
 export async function getUserRank(): Promise<UserRank> {
-  const response = await fetch(`${API_URL}/users/rank`, { headers: authHeaders() });
+  const response = await apiFetch(`${API_URL}/users/rank`);
   if (!response.ok) throw new Error("Failed to fetch rank");
   return response.json();
 }
 
 export async function getUserTokens(): Promise<TokenUsageData> {
-  const response = await fetch(`${API_URL}/users/tokens`, { headers: authHeaders() });
+  const response = await apiFetch(`${API_URL}/users/tokens`);
   if (!response.ok) throw new Error("Failed to fetch token usage");
   const data = await response.json();
   return data.data;
 }
 
 export async function getUserStudyPlans(): Promise<PassportCourse[]> {
-  const response = await fetch(`${API_URL}/users/study-plans`, { headers: authHeaders() });
+  const response = await apiFetch(`${API_URL}/users/study-plans`);
   if (!response.ok) return [];
   const data = await response.json();
   return data.courses ?? [];
