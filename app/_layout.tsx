@@ -22,10 +22,11 @@ function AuthGate() {
     const firstSegment = segments[0] as string | undefined;
     const inAuthGroup = firstSegment === "(auth)";
     const inTabsGroup = firstSegment === "(tabs)";
+    const onLanding = firstSegment === "landing";
 
     if (!user && (inTabsGroup || firstSegment === undefined)) {
-      router.replace("/(auth)/login");
-    } else if (user && (inAuthGroup || firstSegment === undefined)) {
+      router.replace("/landing");
+    } else if (user && (inAuthGroup || onLanding || firstSegment === undefined)) {
       router.replace("/(tabs)");
     }
 
@@ -48,6 +49,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="landing" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
         </Stack>

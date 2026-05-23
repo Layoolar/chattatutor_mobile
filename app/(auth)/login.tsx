@@ -44,7 +44,7 @@ export default function LoginScreen() {
       >
         <View className="pt-4 pb-2">
           <Pressable
-            onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+            onPress={() => router.canGoBack() ? router.back() : router.replace("/landing")}
             className="flex-row items-center gap-2"
             hitSlop={8}
           >
