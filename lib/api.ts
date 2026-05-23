@@ -560,6 +560,36 @@ export async function getUserTokens(): Promise<TokenUsageData> {
   return data.data;
 }
 
+export async function createFlutterwaveCheckout(
+  plan: "premium",
+  redirectUrl: string,
+): Promise<{ paymentLink: string; txRef: string; message?: string }> {
+  const response = await apiFetch(`${API_URL}/flutterwave/subscriptions/checkout`, {
+    method: "POST",
+    body: JSON.stringify({ plan, redirectUrl }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || "Failed to start checkout");
+  }
+
+  return response.json();
+}
+
+export async function cancelFlutterwaveSubscription(): Promise<{ message?: string }> {
+  const response = await apiFetch(`${API_URL}/flutterwave/subscriptions/cancel`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || "Failed to cancel subscription");
+  }
+
+  return response.json();
+}
+
 export async function getUserStudyPlans(): Promise<PassportCourse[]> {
   const response = await apiFetch(`${API_URL}/users/study-plans`);
   if (!response.ok) return [];

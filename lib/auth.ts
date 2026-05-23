@@ -172,3 +172,16 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   if (!response.ok) await throwApiError(response, "Failed to change password");
   return response.json();
 }
+
+export async function updateUsername(username: string): Promise<{ username: string }> {
+  const token = getAuthTokenSync() ?? (await loadAuthToken());
+  if (!token) throw new Error("Not authenticated");
+
+  const response = await apiFetch(`${AUTH_URL}/profile`, {
+    method: "PUT",
+    body: JSON.stringify({ username }),
+  });
+
+  if (!response.ok) await throwApiError(response, "Failed to update username");
+  return response.json();
+}

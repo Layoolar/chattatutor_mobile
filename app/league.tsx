@@ -211,12 +211,12 @@ export default function LeagueScreen() {
               promote, bottom relegate, weekly reset.
             </Text>
             <Pressable
-              onPress={() => toast.info("Pricing screen ships in Phase 6")}
+              onPress={() => router.push("/profile")}
               className="h-12 px-8 rounded-full bg-slate-900 active:bg-slate-800 flex-row items-center"
             >
               <Crown size={16} color="#ffffff" />
               <Text className="ml-2 text-sm font-semibold text-white">
-                Upgrade to compete
+                See plans in Profile
               </Text>
             </Pressable>
             <Pressable

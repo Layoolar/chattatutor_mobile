@@ -192,6 +192,9 @@ Feature keys discoverable today: `daily-drill`, `lesson-echo`, `streak-shield`,
 - **Push notifications** for daily-drill nudges. Needs Expo Push token
   registration + backend persistence + scheduling. Better paired with Phase 7
   push setup (Universal Links + Sentry + analytics) so we set it up once.
+- **Trigger expansion** beyond daily drill. When Phase 7 lands, bundle the
+  whole notification layer once: daily review, streak-risk saves, unlocked
+  practice, social invites, and weekly competition summaries.
 
 ### Phase 4 — Gamification ✅ DONE (timed-quiz session deferred to Phase 4.5)
 
@@ -337,16 +340,40 @@ Friction-y to build, retention multiplier.
 
 ### Phase 6 — Account & monetization
 
-- [ ] **Profile** — view, edit username, avatar (later)
-- [ ] **Settings** — notifications, voice prefs, change password, theme (later), sign out
-- [ ] **Token usage** detail with plan benefits
-- [ ] **Pricing** as a bottom sheet (port `PricingModal`)
+- [x] **Profile** — view, edit username, avatar (later)
+- [x] **Settings** — notifications, voice prefs, change password, theme (later), sign out
+- [x] **Token usage** detail with plan benefits
+- [x] **Pricing** as a bottom sheet (port `PricingModal`)
 - [ ] **Subscription** — Stripe sheet on Android/web, **see "Open decisions" for iOS**
-- [ ] **Flutterwave** for NGN/USD non-iOS
+- [x] **Flutterwave** for NGN/USD non-iOS
 
 ### Phase 7 — Polish & native
 
 - [ ] **Expo Push** registration + token persistence
+  - [ ] Request permission after a real value moment, not on cold launch
+  - [ ] Persist Expo Push token server-side per device/session
+  - [ ] Handle logout, opt-out, reinstall, and token rotation cleanly
+  - [ ] Open the correct deep link when the user taps a notification
+- [ ] **Push preferences v1** in Profile
+  - [ ] Learning reminders toggle
+  - [ ] Social + competition alerts toggle
+  - [ ] Account/billing alerts toggle
+  - [ ] Quiet hours + local-time delivery window
+- [ ] **Push trigger pack v1**
+  - [ ] **Daily review / daily drill** — morning or early-evening nudge when a drill is ready and the user has not studied yet that day
+  - [ ] **Streak at risk** — one save-your-streak nudge near the user's preferred reminder window if they are about to lose an active streak
+  - [ ] **Weak-concept / review queue ready** — send when the user has newly surfaced weak concepts or an overdue review pile, but only if they have been inactive for a while
+  - [ ] **Next session or boss quiz unlocked** — celebrate progress when a lesson section, next session, or boss quiz becomes available after passing the required threshold
+  - [ ] **1v1 challenge alerts** — invite received, opponent played, your turn, and final result
+  - [ ] **Hive / team alerts** — invited to a hive, accepted into a team, team challenge result, and important team announcement
+  - [ ] **League summary** — weekly reset, promotion/relegation result, or "you are close to promotion/relegation" summary, capped tightly
+  - [ ] **Account alerts** — subscription renewal failure, expiring trial, or payment confirmation where applicable
+- [ ] **Push guardrails**
+  - [ ] Max one learning nudge per day unless the user explicitly opts into more
+  - [ ] Batch social alerts where possible instead of sending one push per event
+  - [ ] Never push for every quiz result, every lesson completion, every vote, or every community interaction
+  - [ ] Suppress nudges shortly after the user was already active in-app
+  - [ ] Every push must deep link to one useful destination, not just the home tab
 - [ ] **Universal / App Links** for verify-email + reset-password
 - [ ] **Haptics** — streak gain, correct quiz, level up
 - [ ] **Reanimated** screen transitions + key interactions
