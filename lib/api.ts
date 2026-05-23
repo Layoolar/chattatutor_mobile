@@ -265,6 +265,86 @@ export interface TeamLeaderboardResponse {
   type?: "progress" | "challenges";
 }
 
+export interface TeamChallengeLeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  membershipStatus: "active" | "archived";
+  played: number;
+  wins: number;
+  averageScore: number;
+  winRate: number;
+}
+
+export interface TeamChallengeLeaderboardResponse {
+  leaderboard: TeamChallengeLeaderboardEntry[];
+  type: "challenges";
+}
+
+export interface Announcement {
+  id: string;
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  reactionCounts: Record<string, number>;
+  replyCount: number;
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+  editedAt: string | null;
+  myReactions: string[];
+}
+
+export interface AnnouncementReply {
+  id: string;
+  announcementId: string;
+  userId: string;
+  username: string;
+  body: string;
+  parentReplyId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
+}
+
+export interface ListAnnouncementsResponse {
+  announcements: Announcement[];
+  nextCursor: string | null;
+}
+
+export interface ListAnnouncementRepliesResponse {
+  replies: AnnouncementReply[];
+  nextCursor: string | null;
+}
+
+export type SuggestionStatus = "open" | "planned" | "in_progress" | "shipped" | "declined";
+export type SuggestionCategory = "feature" | "bug" | "improvement" | "other";
+
+export interface Suggestion {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  category: SuggestionCategory;
+  status: SuggestionStatus;
+  upvoteCount: number;
+  commentCount: number;
+  adminResponse: string | null;
+  adminRespondedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  hasVoted: boolean;
+}
+
+export interface ListSuggestionsResponse {
+  suggestions: Suggestion[];
+  nextCursor: string | null;
+}
+
 export interface GeneralHiveStatus {
   team: Team | null;
   pdf: PDF | null;
@@ -903,12 +983,65 @@ export async function joinGeneralHive(): Promise<{
   return response.json();
 }
 
+export async function createTeam(data: {
+  name: string;
+  description?: string;
+  pdfId: string;
+  settings?: {
+    isPublic?: boolean;
+    allowMemberInvites?: boolean;
+    requireApproval?: boolean;
+  };
+}): Promise<{
+  message: string;
+  team: Team;
+}> {
+  const response = await apiFetch(`${API_URL}/teams`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to create team");
+  }
+
+  return response.json();
+}
+
 export async function getTeamDetails(teamId: string): Promise<TeamDetails> {
   const response = await apiFetch(`${API_URL}/teams/${encodeURIComponent(teamId)}`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw createApiError(error, "Failed to fetch team details");
+  }
+
+  return response.json();
+}
+
+export async function inviteTeamMember(
+  teamId: string,
+  data: {
+    email?: string;
+    expiresInDays?: number;
+  },
+): Promise<{
+  message: string;
+  invitation: TeamInvitation;
+  inviteLink: string;
+}> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/invitations`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to create invitation");
   }
 
   return response.json();
@@ -922,6 +1055,113 @@ export async function getTeamLeaderboard(teamId: string): Promise<TeamLeaderboar
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw createApiError(error, "Failed to fetch team leaderboard");
+  }
+
+  return response.json();
+}
+
+export async function getTeamChallengeLeaderboard(
+  teamId: string,
+): Promise<TeamChallengeLeaderboardResponse> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/leaderboard?type=challenges`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch team challenge leaderboard");
+  }
+
+  return response.json();
+}
+
+export async function listAnnouncements(
+  cursor?: string | null,
+  limit = 20,
+): Promise<ListAnnouncementsResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  params.set("limit", String(limit));
+
+  const response = await apiFetch(`${API_URL}/announcements?${params.toString()}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch announcements");
+  }
+
+  return response.json();
+}
+
+export async function getAnnouncement(id: string): Promise<{ announcement: Announcement }> {
+  const response = await apiFetch(`${API_URL}/announcements/${encodeURIComponent(id)}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch announcement");
+  }
+
+  return response.json();
+}
+
+export async function listAnnouncementReplies(
+  announcementId: string,
+  cursor?: string | null,
+  limit = 20,
+): Promise<ListAnnouncementRepliesResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  params.set("limit", String(limit));
+
+  const response = await apiFetch(
+    `${API_URL}/announcements/${encodeURIComponent(announcementId)}/replies?${params.toString()}`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch announcement replies");
+  }
+
+  return response.json();
+}
+
+export async function listSuggestions(opts?: {
+  sort?: "top" | "new";
+  status?: SuggestionStatus;
+  category?: SuggestionCategory;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<ListSuggestionsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.sort) params.set("sort", opts.sort);
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.category) params.set("category", opts.category);
+  if (opts?.cursor) params.set("cursor", opts.cursor);
+  params.set("limit", String(opts?.limit ?? 20));
+
+  const response = await apiFetch(`${API_URL}/suggestions?${params.toString()}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch suggestions");
+  }
+
+  return response.json();
+}
+
+export async function toggleSuggestionUpvote(
+  id: string,
+): Promise<{ added: boolean; newCount: number }> {
+  const response = await apiFetch(
+    `${API_URL}/suggestions/${encodeURIComponent(id)}/upvote`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to toggle suggestion vote");
   }
 
   return response.json();

@@ -325,15 +325,15 @@ npx expo start -c
 Friction-y to build, retention multiplier.
 
 - [x] **Hives** (study groups / school cohorts) — real tab shell, General Hive entry point, active/archived team state
-- [ ] **Teams** — create, invite link, leaderboard, archive
+- [x] **Teams** — create, invite link, leaderboard, archive
 - [x] **Pending invitations** card on Home
-- [ ] **Team challenge leaderboard**
+- [x] **Team challenge leaderboard**
 
 ### Phase 5.5 — Social feed expansion
 
-- [ ] **Community feed** inside Hives (read-first)
-- [ ] **Community post detail** (deep link from notification)
-- [ ] **Suggestions** feed + voting
+- [x] **Community feed** inside Hives (read-first)
+- [x] **Community post detail** (deep link from notification)
+- [x] **Suggestions** feed + voting
 
 ### Phase 6 — Account & monetization
 

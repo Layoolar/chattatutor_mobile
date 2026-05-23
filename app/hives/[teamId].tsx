@@ -1,20 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Share, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Sparkles, Trophy, UsersRound } from "lucide-react-native";
+import { ChevronLeft, Link2, Trophy, UsersRound } from "lucide-react-native";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { GradientIcon } from "@/components/GradientIcon";
+import { Input } from "@/components/Input";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
+import { useAuth } from "@/lib/auth-context";
 import {
   getTeamDetails,
+  getTeamChallengeLeaderboard,
   getTeamLeaderboard,
+  inviteTeamMember,
   type LeaderboardEntry,
+  type TeamChallengeLeaderboardEntry,
   type TeamDetails,
   type TeamMember,
 } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+
+function isValidEmail(value: string): boolean {
+  return /^\S+@\S+\.\S+$/.test(value);
+}
 
 function MemberRow({ member }: { member: TeamMember }) {
   const label = member.username || member.user?.name || member.email || "Member";
@@ -67,9 +76,14 @@ export default function HiveDetailScreen() {
   const { teamId } = useLocalSearchParams<{ teamId?: string }>();
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
 
   const [details, setDetails] = useState<TeamDetails | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [challengeLeaderboard, setChallengeLeaderboard] = useState<TeamChallengeLeaderboardEntry[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [latestInviteLink, setLatestInviteLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +96,10 @@ export default function HiveDetailScreen() {
       return;
     }
 
-    const [detailsResult, leaderboardResult] = await Promise.allSettled([
+    const [detailsResult, leaderboardResult, challengeLeaderboardResult] = await Promise.allSettled([
       getTeamDetails(teamId),
       getTeamLeaderboard(teamId),
+      getTeamChallengeLeaderboard(teamId),
     ]);
 
     if (detailsResult.status === "fulfilled") {
@@ -108,6 +123,19 @@ export default function HiveDetailScreen() {
           leaderboardResult.reason instanceof Error
             ? leaderboardResult.reason.message
             : "Couldn't load leaderboard",
+        );
+      }
+    }
+
+    if (challengeLeaderboardResult.status === "fulfilled") {
+      setChallengeLeaderboard(challengeLeaderboardResult.value.leaderboard ?? []);
+    } else {
+      setChallengeLeaderboard([]);
+      if (detailsResult.status === "fulfilled") {
+        toast.error(
+          challengeLeaderboardResult.reason instanceof Error
+            ? challengeLeaderboardResult.reason.message
+            : "Couldn't load challenge leaderboard",
         );
       }
     }
@@ -137,7 +165,12 @@ export default function HiveDetailScreen() {
     () => details?.members.filter((member) => member.status === "archived") ?? [],
     [details],
   );
+  const currentMember = useMemo(
+    () => details?.members.find((member) => member.userId === user?.id) ?? null,
+    [details, user?.id],
+  );
   const topLeaderboard = leaderboard.slice(0, 5);
+  const topChallengeLeaderboard = challengeLeaderboard.slice(0, 5);
   const averageProgress =
     leaderboard.length > 0
       ? Math.round(
@@ -145,6 +178,54 @@ export default function HiveDetailScreen() {
             leaderboard.length,
         )
       : 0;
+  const canInvite = Boolean(
+    details &&
+      user &&
+      currentMember?.status === "active" &&
+      (
+        details.team.ownerId === user.id ||
+        currentMember.role === "admin" ||
+        details.team.settings?.allowMemberInvites
+      ),
+  );
+
+  const handleInvite = async () => {
+    if (!teamId) return;
+
+    const email = inviteEmail.trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+
+    try {
+      setInviteBusy(true);
+      const result = await inviteTeamMember(teamId, {
+        email,
+        expiresInDays: 7,
+      });
+      setLatestInviteLink(result.inviteLink);
+      setInviteEmail("");
+      toast.success(result.message || "Invite created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't create invite");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const shareInviteLink = async () => {
+    if (!latestInviteLink) return;
+
+    try {
+      await Share.share({
+        message: latestInviteLink,
+        url: latestInviteLink,
+      });
+    } catch {
+      toast.error("Couldn't open the share sheet");
+    }
+  };
 
   return (
     <ScreenContainer scroll refreshing={refreshing} onRefresh={onRefresh}>
@@ -259,7 +340,71 @@ export default function HiveDetailScreen() {
           <View className="gap-3">
             <View className="flex-row items-center justify-between">
               <Text className="text-sm font-bold uppercase tracking-wide text-slate-500">
-                Leaderboard
+                Invite links
+              </Text>
+              {canInvite ? (
+                <Text className="text-xs font-semibold text-slate-400">7-day expiry</Text>
+              ) : null}
+            </View>
+
+            {canInvite ? (
+              <View className="rounded-3xl border border-slate-200 bg-white p-5 gap-4">
+                <Input
+                  label="Invite by email"
+                  value={inviteEmail}
+                  onChangeText={setInviteEmail}
+                  placeholder="teammate@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <Text className="text-sm leading-6 text-slate-500">
+                  We generate a shareable invite link and, when available, email the invite automatically.
+                </Text>
+                <View className="flex-row flex-wrap gap-3">
+                  <Button
+                    title="Generate invite link"
+                    onPress={handleInvite}
+                    loading={inviteBusy}
+                    fullWidth={false}
+                  />
+                  {latestInviteLink ? (
+                    <Button
+                      title="Share latest link"
+                      variant="secondary"
+                      onPress={shareInviteLink}
+                      fullWidth={false}
+                    />
+                  ) : null}
+                </View>
+
+                {latestInviteLink ? (
+                  <View className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
+                    <View className="flex-row items-center gap-2">
+                      <Link2 size={16} color="#4f46e5" />
+                      <Text className="text-xs font-bold uppercase tracking-wide text-indigo-600">
+                        Latest invite link
+                      </Text>
+                    </View>
+                    <Text className="mt-2 text-sm leading-6 text-slate-700" numberOfLines={3}>
+                      {latestInviteLink}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <Text className="text-sm font-semibold text-slate-900">Invite access is limited</Text>
+                <Text className="mt-1 text-sm leading-6 text-slate-500">
+                  Only owners, admins, or teams that allow member invites can generate invite links.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View className="gap-3">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm font-bold uppercase tracking-wide text-slate-500">
+                Progress leaderboard
               </Text>
               <Text className="text-xs font-semibold text-slate-400">
                 {leaderboard.length} ranked
@@ -278,6 +423,53 @@ export default function HiveDetailScreen() {
                 </Text>
                 <Text className="mt-1 text-sm leading-6 text-slate-500">
                   Once members start moving through lessons and quizzes, the ranking shows up here.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View className="gap-3">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm font-bold uppercase tracking-wide text-slate-500">
+                Challenge leaderboard
+              </Text>
+              <Text className="text-xs font-semibold text-slate-400">
+                {challengeLeaderboard.length} ranked
+              </Text>
+            </View>
+            {topChallengeLeaderboard.length > 0 ? (
+              <View className="gap-3">
+                {topChallengeLeaderboard.map((entry) => (
+                  <View
+                    key={entry.userId}
+                    className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                  >
+                    <View className="h-10 w-10 items-center justify-center rounded-full bg-amber-50">
+                      <Text className="text-sm font-extrabold text-amber-700">#{entry.rank}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-slate-900" numberOfLines={1}>
+                        {entry.username}
+                      </Text>
+                      <Text className="mt-1 text-xs text-slate-500">
+                        {entry.wins}/{entry.played} wins • {Math.round(entry.winRate)}% win rate
+                      </Text>
+                    </View>
+                    <View className="rounded-full bg-rose-50 px-3 py-1.5">
+                      <Text className="text-xs font-semibold text-rose-700">
+                        {Math.round(entry.averageScore)} avg
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View className="rounded-2xl border border-slate-200 bg-white p-4">
+                <Text className="text-sm font-semibold text-slate-900">
+                  No challenge data yet
+                </Text>
+                <Text className="mt-1 text-sm leading-6 text-slate-500">
+                  Once this team starts playing 1v1 challenges, the ranking shows up here.
                 </Text>
               </View>
             )}
