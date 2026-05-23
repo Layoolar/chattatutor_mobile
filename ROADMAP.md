@@ -131,38 +131,209 @@ learn how quiz/flashcard behavior wants to sit on top of it.
 - [x] **Boss quiz** — multi-lesson final mastery check, unlocked from the course screen after all lessons are cleared
 - [x] **Weak concepts** card on Home that drills into review
 
-### Phase 3 — Engagement loop
+### Phase 3 — Engagement loop ✅ DONE (push notifications deferred)
 
 What gets users back tomorrow.
 
-- [ ] **Daily Drill** screen + Expo push reminder
-- [ ] **Echo question** (recall) — appears on Home, one-tap answer
-- [ ] **Streak shield** UI + redeem flow
-- [ ] **Quest Board** — daily/weekly quests with rewards
-- [ ] **Activity heatmap** (Profile)
-- [ ] **"Did you know" / spotlight tip** rotating card
+- [x] **Daily Drill** screen (`app/daily-drill.tsx`)
+  - [x] Loads `/users/daily-drill`, renders mode banner (speed-run / accuracy-only / dark-mode / double-or-nothing)
+  - [x] MCQ flow with per-question feedback, haptics on correct/wrong
+  - [x] Final results: score, per-question recap, "Back home" CTA
+  - [x] Marks `daily-drill` feature on completion
+  - [ ] **Expo push reminder for streaks** — deferred to Phase 7 alongside the rest of the push setup
+- [x] **Echo question** (`components/EchoCard.tsx`)
+  - [x] Polls `/users/echo` on Home mount, hides if no echo waiting
+  - [x] One-tap MCQ with haptic + correct/incorrect reveal
+  - [x] Marks `lesson-echo` feature on first answer
+- [x] **Streak shield** (`components/StreakShieldCard.tsx`)
+  - [x] Shows count from `activity.streakShields`, copy adapts when count is zero
+  - [x] Redeem flow → `POST /users/streak-shield`, optimistic count update, success toast + haptic
+  - [x] Marks `streak-shield` feature on redeem
+- [x] **Quest Board** (`app/quests.tsx`)
+  - [x] Static list of 8 mobile-realistic quests with feature-gated completion state
+  - [x] Header card showing X / Y cleared
+  - [x] Auto-marks `quest-board` feature when screen opens
+- [x] **Activity heatmap** (`components/ActivityHeatmap.tsx`) — wired into Profile tab
+  - [x] 12-week grid, horizontal scroll, month labels, today outlined
+- [x] **Did you know** rotating tip (`components/DidYouKnow.tsx`)
+  - [x] Stable day-of-year rotation through tips whose feature keys are still undiscovered
+  - [x] Dismissable per-session
+- [x] **Feature discovery store** (`lib/feature-discovery.ts`)
+  - [x] AsyncStorage cache, backend merge via `/users/discovered-features` GET/POST
+  - [x] `useDiscoveredFeatures()` + `useFeatureDiscovery(key)` hooks
+  - [x] `markFeatureDiscovered(key)` callable from anywhere
+- [x] **Home tab** weave-in
+  - [x] Daily-drill nudge card (rose accent)
+  - [x] Echo card slot (auto-hides)
+  - [x] Streak shield card
+  - [x] Quest board link card
+  - [x] Did You Know rotating tip card
 
-### Phase 4 — Gamification
+### How to test the Phase 3 plumbing
+
+```bash
+# clean dev server
+npx expo start -c
+```
+
+1. Tap the rose-tinted **Today's drill** card on Home → run through 5 questions.
+2. Pull-to-refresh the Home tab → if an echo is waiting on the backend, the
+   cyan **Lesson echo** card appears between hero and drill.
+3. The **Streak shield** card always shows; copy adapts to shield count.
+4. Tap the violet **Quest board** card → check off any quest that has its
+   feature key marked discovered.
+5. Visit Profile → 12-week activity heatmap sits below the credentials block.
+
+Feature keys discoverable today: `daily-drill`, `lesson-echo`, `streak-shield`,
+`quest-board`. Phase 4–5 will add `passport-visit`, `boss-quiz-cleared`, etc.
+
+### Deferred from Phase 3 (intentional)
+
+- **Push notifications** for daily-drill nudges. Needs Expo Push token
+  registration + backend persistence + scheduling. Better paired with Phase 7
+  push setup (Universal Links + Sentry + analytics) so we set it up once.
+
+### Phase 4 — Gamification ✅ DONE (timed-quiz session deferred to Phase 4.5)
 
 The reason the web app calls itself a game.
 
-- [ ] **League** — weekly board, promotion/relegation visuals, current position
-- [ ] **Rank** progression with title milestones
-- [ ] **Passport** — mastered courses as stamps; Bronze→Silver→Gold→Platinum tiers
-- [ ] **1v1 challenges** — pick a friend, pick a lesson, race the quiz
-- [ ] **Rival events** — banner on Home for current rival activity
+- [x] **League** (`app/league.tsx`)
+  - [x] Premium-gated; upgrade card for free users mirrors frontend
+  - [x] Tier-tinted hero (Gold/Silver/Bronze) with user rank + member-count rules
+  - [x] Promotion / safe / relegation zones with trend icons and user crown
+  - [x] Marks `league-visit` feature on open
+- [x] **Rank progression** (`components/RankProgressCard.tsx`)
+  - [x] Current title, total mastery, points-to-next progress bar
+  - [x] Wired into Profile tab between credentials and heatmap
+- [x] **Knowledge Passport** (`app/passport.tsx`)
+  - [x] Mastered courses as tinted stamps with emoji + tier label
+  - [x] Bronze→Silver→Gold→Platinum tiers via `masteryAvg` thresholds (matches frontend exactly)
+  - [x] In-progress + archived sections
+  - [x] Tier tally chips in the dark hero
+  - [x] Marks `passport-visit` feature on open
+- [x] **Rival events banner** (`components/RivalEventsBanner.tsx`)
+  - [x] Renders on Home for premium users when `activity.rivalEvents` is non-empty
+  - [x] Per-event tap → opens linked course; dismiss → `POST /users/rival-event/dismiss`
+- [x] **1v1 challenges hub** (`app/challenges.tsx` + `lib/challenge-api.ts`)
+  - [x] Invite-code panel — paste code → `POST /challenges/invite/:code/accept`
+  - [x] Grouped list (Live / Pending / Completed) with status + won badges
+  - [x] Heads-up card explaining the deferred bits
+  - [x] Marks `challenge-visit` feature on open
+- [x] **Hives tab → Compete hub** (`app/(tabs)/hives.tsx`)
+  - [x] Dark rank/mastery card at top
+  - [x] Three rows linking out: League (locked for free), Passport, 1v1 Challenges
+  - [x] Stamp count badge on Passport row
+
+### How to test the Phase 4 plumbing
+
+```bash
+npx expo start -c
+```
+
+1. From the bottom tab bar, tap **Hives** — see your rank/mastery hero and the three sub-routes.
+2. Tap **Knowledge Passport** → see tier tally + stamps grid. Bronze/Silver/Gold/Platinum stamps render with brand tints.
+3. Tap **Weekly League** — free accounts see the premium upsell; premium accounts see the tier hero + zones.
+4. **Profile** tab now has a rank progression card above the activity heatmap.
+5. From Home: if the backend has `rivalEvents` for a premium account, the rose banner renders between hero and Echo card. Tap to open the related course, or X to dismiss.
+6. Challenges: enter an invite code from a friend to accept; pull to refresh the standings list.
+
+### Deferred to Phase 4.5
+
+- **Create new challenge flow** — pdfId / lessonIndex / opponent picker + `POST /challenges`
+- **Live timed-quiz session** — `POST /challenges/:id/start` → polled questions, app-state (background/foreground) anti-cheat, complete/results
+- **Challenge analytics screen** — post-game stats per participant
+- **Auto-mark `challenge-create` and `1v1-completed` feature keys** when those flows ship
+
+Reason: the timed quiz is a multi-screen subflow with backend session state, app-state event handling (RN's equivalent of tab-switches), and anti-cheat counters. Bundling it with Phase 4 would have doubled the phase's scope and delayed gamification wins (Passport + League + Rank) that work today.
+
+### Phase 4.5 — Challenges create + live timed quiz ✅ DONE
+
+- [x] **Tab restructure** — "Hives" tab renamed to **Compete** (Trophy icon); new fresh **Hives** tab placeholder (UsersRound icon) reserved for Phase 5 study groups
+- [x] **Challenges folder restructure** — `app/challenges.tsx` → `app/challenges/index.tsx` with nested routes:
+  - `create.tsx` — full create flow
+  - `[id]/index.tsx` — combined waiting room / live / results view
+  - `[id]/play.tsx` — live timed quiz
+- [x] **Extended `lib/challenge-api.ts`** with `startChallengeQuiz`, `getNextQuestion`, `submitAnswer`, `completeChallenge`, `reportTabSwitch`, `getChallengeAnalytics`
+- [x] **Challenge create screen** (`app/challenges/create.tsx`)
+  - [x] Course picker (only courses with `totalDays > 0`)
+  - [x] Lesson picker (fetches `getStudyPlan` on course select)
+  - [x] Time-per-question chips: 15s / 30s / 60s (Speed / Standard / Thinker)
+  - [x] `POST /challenges` then `router.replace` to detail with `code` param
+  - [x] Marks `challenge-create` feature
+- [x] **Challenge detail screen** (`app/challenges/[id]/index.tsx`)
+  - [x] Three-state hero: pending (amber, waiting on opponent), active (rose, time to race), completed (slate/emerald with winner crown)
+  - [x] Invite code panel (only when pending + `code` param present) — copy via `expo-clipboard`, native `Share.share()`
+  - [x] Per-participant cards with score, accuracy, isYou highlight, winner badge
+  - [x] Completed-state per-question breakdown via `getChallengeAnalytics`
+  - [x] Bottom CTA switches: Start race / Cancel / Back
+- [x] **Live timed-quiz screen** (`app/challenges/[id]/play.tsx`)
+  - [x] Dark theme (slate-900) to signal "focus mode" — different from the rest of the app
+  - [x] Countdown timer ring (Animated.Value, switches to rose at ≤5s)
+  - [x] One-shot answer per question with correct/wrong reveal + haptic
+  - [x] Auto-submit on timeout (`selectedIndex: -1` for "no answer")
+  - [x] Live correct/answered counter pill at top
+  - [x] **Anti-cheat**: `AppState.addEventListener("change", ...)` reports `tab-switch` when app backgrounds during a session
+  - [x] **Hardware back blocked** during a live race
+  - [x] On finish → `completeChallenge` → routes back to detail (which now shows the completed state with analytics)
+  - [x] Marks `1v1-completed` feature
+- [x] **Challenges list polish**
+  - [x] `+` button in header → create screen
+  - [x] Row tap routes to detail (no more "coming in Phase 4.5" toast)
+  - [x] Empty state has a "Create a challenge" CTA
+  - [x] Removed Phase 4.5 heads-up footer
+
+### Tab restructure details
+
+Bottom bar is now: **Home / Lessons / Compete / Hives / Profile** (Community
+removed from the bar via `href: null` — file kept for future use).
+
+| Tab | Icon | Purpose |
+|---|---|---|
+| Home | Home | Continue learning, drill, echo, streak |
+| Lessons | BookOpen | Course library |
+| Compete | Trophy | League, Passport, Challenges (formerly "Hives") |
+| Hives | UsersRound | Study groups / school cohorts (Phase 5 placeholder) |
+| Profile | User | Account + rank progress + activity heatmap |
+
+### How to test Phase 4.5
+
+```bash
+npx expo start -c
+```
+
+1. Bottom bar shows **Compete** (Trophy) and **Hives** (UsersRound). The old Hives content now lives under Compete.
+2. **Compete → 1v1 Challenges → +** → pick a course → pick a lesson → pick time → "Create challenge."
+3. You land on the detail screen with an invite code. Tap **Share** or **Copy**.
+4. From a second device/account, paste that code into the challenges list invite box.
+5. Both sides hit **Start your race** → live timed quiz with countdown ring + haptics.
+6. When both finish, the detail screen flips to the completed state with winner crown + per-question breakdown.
+
+### Caveats worth knowing
+
+- **Network polling cadence**: each question is fetched on-demand from `getNextQuestion`. No prefetching; the next-question request happens during the `FEEDBACK_HOLD_MS` (900ms) reveal. On a slow connection this can stutter — a Phase 7 polish item.
+- **`AppState` "inactive"** fires briefly on iOS during system dialogs (Face ID, push prompts). It will report a tab-switch even though the user didn't deliberately leave. Backend should weight these lightly until we add a debounce.
+- **Hardware back blocked** is intentional during a live race — pressing back shows a toast instead. There's no "quit race" affordance yet; the only exits are finishing or backgrounding (which the server can count against you).
+
+### Phase 5 decisions locked
+
+1. **Community stays folded into Hives.** The hidden `community` file can remain for future sub-routes, but the bottom bar stays stable at five tabs. Community is no longer coming back as a separate tab.
+2. **Phase 5 ships from the Hives anchor.** Hives study groups + Teams land first because they plug directly into Compete, League, Challenges, and invite pressure.
+3. **Community feed + Suggestions move to Phase 5.5.** They remain important, but they are lower-leverage than group identity, invite loops, and team progression.
 
 ### Phase 5 — Social & community
 
 Friction-y to build, retention multiplier.
 
-- [ ] **Community feed** (read-first)
-- [ ] **Community post detail** (deep link from notification)
+- [x] **Hives** (study groups / school cohorts) — real tab shell, General Hive entry point, active/archived team state
 - [ ] **Teams** — create, invite link, leaderboard, archive
+- [x] **Pending invitations** card on Home
 - [ ] **Team challenge leaderboard**
-- [ ] **Hives** (study groups / school cohorts)
+
+### Phase 5.5 — Social feed expansion
+
+- [ ] **Community feed** inside Hives (read-first)
+- [ ] **Community post detail** (deep link from notification)
 - [ ] **Suggestions** feed + voting
-- [ ] **Pending invitations** card on Home
 
 ### Phase 6 — Account & monetization
 

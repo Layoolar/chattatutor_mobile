@@ -85,6 +85,15 @@ export default function RootLayout() {
               <Stack.Screen name="lesson/[pdfId]/[lessonIndex]" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="lesson/[pdfId]/[lessonIndex]/flashcards" options={{ animation: "slide_from_right" }} />
               <Stack.Screen name="lesson/[pdfId]/[lessonIndex]/quiz" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="daily-drill" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="hives/[teamId]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="quests" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="league" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="passport" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/create" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="challenges/[id]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/[id]/play" options={{ animation: "slide_from_bottom", gestureEnabled: false }} />
             </Stack>
           </AuthProvider>
         </ToastProvider>

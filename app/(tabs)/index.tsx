@@ -5,27 +5,39 @@ import {
   ArrowRight,
   BookOpen,
   ChevronRight,
+  Dumbbell,
   Flame,
   Lightbulb,
+  Scroll,
   Sparkles,
   Target,
   Trophy,
   Upload,
+  UsersRound,
+  X,
 } from "lucide-react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import { GradientIcon } from "@/components/GradientIcon";
+import { EchoCard } from "@/components/EchoCard";
+import { StreakShieldCard } from "@/components/StreakShieldCard";
+import { DidYouKnow } from "@/components/DidYouKnow";
+import { RivalEventsBanner } from "@/components/RivalEventsBanner";
 import { useAuth } from "@/lib/auth-context";
 import { hasPremiumFeatureAccess } from "@/lib/premium-access";
 import { useToast } from "@/lib/toast";
 import {
+  acceptInvitation,
   getWeakConcepts,
+  getUserInvitations,
   getMyPDFs,
+  rejectInvitation,
   getUserActivity,
   getUserRank,
   getUserStudyPlans,
   type PassportCourse,
   type PDF,
+  type TeamInvitationWithTeam,
   type UserActivity,
   type UserRank,
   type WeakConcept,
@@ -51,11 +63,13 @@ export default function DashboardHome() {
   const [courses, setCourses] = useState<CourseCard[]>([]);
   const [weakConcepts, setWeakConcepts] = useState<WeakConcept[]>([]);
   const [weakConceptsMessage, setWeakConceptsMessage] = useState<string | null>(null);
+  const [pendingInvitations, setPendingInvitations] = useState<TeamInvitationWithTeam[]>([]);
+  const [inviteActionCode, setInviteActionCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [a, r, plansResult, pdfsResult, weakConceptsResult] = await Promise.allSettled([
+    const [a, r, plansResult, pdfsResult, weakConceptsResult, invitationsResult] = await Promise.allSettled([
       getUserActivity(),
       getUserRank(),
       getUserStudyPlans(),
@@ -63,6 +77,7 @@ export default function DashboardHome() {
       hasPremiumAccess
         ? getWeakConcepts()
         : Promise.resolve({ weakConcepts: [] as WeakConcept[], message: undefined }),
+      getUserInvitations(),
     ]);
 
     if (a.status === "fulfilled") setActivity(a.value);
@@ -97,6 +112,12 @@ export default function DashboardHome() {
     } else {
       setWeakConcepts([]);
       setWeakConceptsMessage(null);
+    }
+
+    if (invitationsResult.status === "fulfilled") {
+      setPendingInvitations(invitationsResult.value);
+    } else {
+      setPendingInvitations([]);
     }
 
     if (plansResult.status === "rejected" || pdfsResult.status === "rejected") {
@@ -141,6 +162,7 @@ export default function DashboardHome() {
   const resumeCourseProgress = resumeCourse ? getProgress(resumeCourse) : 0;
   const activeCourseCount = courses.filter((course) => !course.isComplete).length;
   const weakestConcept = weakConcepts[0] ?? null;
+  const visibleInvitations = pendingInvitations.slice(0, 2);
   const openWeakestConcept = () => {
     if (!weakestConcept) return;
 
@@ -151,6 +173,37 @@ export default function DashboardHome() {
         lessonIndex: String(weakestConcept.lessonIndex),
       },
     });
+  };
+
+  const handleAcceptInvitation = async (inviteCode: string) => {
+    try {
+      setInviteActionCode(inviteCode);
+      const result = await acceptInvitation(inviteCode);
+      setPendingInvitations((current) =>
+        current.filter((invitation) => invitation.inviteCode !== inviteCode),
+      );
+      toast.success(result.message || "Invitation accepted");
+      router.push("/(tabs)/hives");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't accept invitation");
+    } finally {
+      setInviteActionCode(null);
+    }
+  };
+
+  const handleRejectInvitation = async (inviteCode: string) => {
+    try {
+      setInviteActionCode(inviteCode);
+      const result = await rejectInvitation(inviteCode);
+      setPendingInvitations((current) =>
+        current.filter((invitation) => invitation.inviteCode !== inviteCode),
+      );
+      toast.success(result.message || "Invitation rejected");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reject invitation");
+    } finally {
+      setInviteActionCode(null);
+    }
   };
 
   return (
@@ -263,6 +316,138 @@ export default function DashboardHome() {
               </View>
             </Pressable>
           ) : null}
+
+          {/* Rival events — premium-tier social pressure */}
+          {hasPremiumAccess && activity && activity.rivalEvents.length > 0 ? (
+            <RivalEventsBanner
+              events={activity.rivalEvents}
+              onChange={(next) =>
+                setActivity((prev) =>
+                  prev ? { ...prev, rivalEvents: next } : prev,
+                )
+              }
+            />
+          ) : null}
+
+          {pendingInvitations.length > 0 ? (
+            <View
+              className="overflow-hidden rounded-3xl border border-amber-200 bg-white p-5"
+              style={{
+                shadowColor: "#0f172a",
+                shadowOpacity: 0.05,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 3,
+              }}
+            >
+              <View
+                pointerEvents="none"
+                className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-amber-100/70"
+              />
+              <View className="flex-row items-start gap-4">
+                <View className="h-12 w-12 rounded-2xl bg-amber-50 items-center justify-center">
+                  <UsersRound size={22} color="#d97706" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+                    Pending invitations
+                  </Text>
+                  <Text className="mt-1 text-lg font-extrabold text-slate-900">
+                    New hive invite{pendingInvitations.length === 1 ? "" : "s"}
+                  </Text>
+                  <Text className="mt-2 text-sm leading-6 text-slate-600">
+                    Accept to join the group flow immediately, or clear the invite if it is not the right room.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-4 gap-3">
+                {visibleInvitations.map((invitation) => {
+                  const busy = inviteActionCode === invitation.inviteCode;
+
+                  return (
+                    <View
+                      key={invitation.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <View className="flex-row items-start justify-between gap-3">
+                        <View className="flex-1">
+                          <Text className="text-sm font-bold text-slate-900">
+                            {invitation.team?.name || "Hive invitation"}
+                          </Text>
+                          <Text className="mt-1 text-xs text-slate-500">
+                            Invited by {invitation.invitedByUsername || "Someone"}
+                          </Text>
+                          <Text className="mt-1 text-xs text-slate-400">
+                            Expires {new Date(invitation.expiresAt).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <View className="flex-row gap-2">
+                          <Pressable
+                            onPress={() => handleAcceptInvitation(invitation.inviteCode)}
+                            disabled={busy}
+                            className={`h-10 px-4 flex-row items-center justify-center rounded-full ${
+                              busy ? "bg-emerald-300" : "bg-emerald-600 active:bg-emerald-700"
+                            }`}
+                          >
+                            <Text className="text-xs font-semibold text-white">
+                              {busy ? "Working..." : "Accept"}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleRejectInvitation(invitation.inviteCode)}
+                            disabled={busy}
+                            className={`h-10 w-10 items-center justify-center rounded-full border ${
+                              busy
+                                ? "border-slate-200 bg-slate-100"
+                                : "border-slate-200 bg-white active:bg-slate-100"
+                            }`}
+                          >
+                            <X size={16} color="#475569" />
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <Pressable
+                onPress={() => router.push("/(tabs)/hives")}
+                className="mt-4 flex-row items-center justify-end gap-1"
+              >
+                <Text className="text-sm font-semibold text-amber-700">
+                  Open Hives
+                </Text>
+                <ArrowRight size={16} color="#b45309" />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* Echo question — appears only when backend has one waiting */}
+          <EchoCard refreshToken={refreshing ? Date.now() : 0} />
+
+          {/* Daily drill nudge */}
+          <Pressable
+            onPress={() => router.push("/daily-drill")}
+            className="flex-row items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50/70 p-4 active:bg-rose-100/60"
+          >
+            <GradientIcon size={44} radius={14} from="#f43f5e" to="#ef4444">
+              <Dumbbell size={20} color="#ffffff" />
+            </GradientIcon>
+            <View className="flex-1">
+              <Text className="text-xs uppercase tracking-wider font-semibold text-rose-700">
+                Today's drill
+              </Text>
+              <Text className="text-base font-bold text-slate-900">
+                Two minutes to lock the streak
+              </Text>
+              <Text className="text-xs text-slate-600 mt-0.5">
+                Reviews your weakest concepts.
+              </Text>
+            </View>
+            <ChevronRight size={18} color="#be123c" />
+          </Pressable>
 
           {/* Primary action: upload or topic */}
           <View className="gap-3">
@@ -410,6 +595,38 @@ export default function DashboardHome() {
               </Text>
             </View>
           </View>
+
+          {/* Streak shields */}
+          <StreakShieldCard
+            shields={activity?.streakShields ?? 0}
+            onChange={(next) =>
+              setActivity((prev) =>
+                prev ? { ...prev, streakShields: next } : prev,
+              )
+            }
+          />
+
+          {/* Quest board link */}
+          <Pressable
+            onPress={() => router.push("/quests")}
+            className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 active:bg-slate-50"
+          >
+            <GradientIcon size={44} radius={14} from="#a78bfa" to="#6366f1">
+              <Scroll size={20} color="#ffffff" />
+            </GradientIcon>
+            <View className="flex-1">
+              <Text className="text-base font-bold text-slate-900">
+                Quest board
+              </Text>
+              <Text className="text-xs text-slate-500">
+                Long-term challenges unlocked by using the app.
+              </Text>
+            </View>
+            <ChevronRight size={18} color="#94a3b8" />
+          </Pressable>
+
+          {/* Tip card — rotates by day, only shows undiscovered features */}
+          <DidYouKnow />
 
           {hasPremiumAccess && weakConcepts.length > 0 ? (
             <Pressable

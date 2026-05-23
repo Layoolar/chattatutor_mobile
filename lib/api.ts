@@ -202,6 +202,101 @@ export interface WeakConcept {
   masteryScore: number;
 }
 
+export interface Team {
+  id: string;
+  name: string;
+  description?: string;
+  pdfId: string;
+  studyPlanId: string;
+  ownerId: string;
+  memberCount?: number;
+  hiveLevel?: number;
+  membershipStatus?: "active" | "archived" | "left" | "removed";
+  settings?: {
+    isPublic?: boolean;
+    allowMemberInvites?: boolean;
+    requireApproval?: boolean;
+  };
+}
+
+export interface TeamInvitation {
+  id: string;
+  inviteCode: string;
+  expiresAt: string;
+  email?: string;
+  invitedByUsername?: string;
+}
+
+export interface TeamInvitationWithTeam extends TeamInvitation {
+  team: Team;
+}
+
+export interface TeamMember {
+  id: string;
+  userId: string;
+  username?: string;
+  email?: string;
+  role: "owner" | "admin" | "member";
+  status: "active" | "archived" | "left" | "removed";
+  user?: {
+    name: string;
+    email: string;
+  };
+}
+
+export interface TeamDetails {
+  team: Team;
+  members: TeamMember[];
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  membershipStatus: "active" | "archived";
+  completedLessons: number;
+  averageQuizScore: number;
+  progressPercentage: number;
+  badge?: "🥇" | "🥈" | "🥉";
+}
+
+export interface TeamLeaderboardResponse {
+  leaderboard: LeaderboardEntry[];
+  type?: "progress" | "challenges";
+}
+
+export interface GeneralHiveStatus {
+  team: Team | null;
+  pdf: PDF | null;
+  studyPlan: unknown | null;
+  memberCount: number;
+  pendingInviteCount: number;
+  membershipStatus: "active" | "archived" | "left" | "removed" | null;
+  pendingInvitation: TeamInvitation | null;
+  canJoin: boolean;
+  joinLabel:
+    | "Join General Hive"
+    | "Rejoin General Hive"
+    | "Open General Hive"
+    | "Restore premium"
+    | null;
+}
+
+export interface ApiErrorWithCode extends Error {
+  code?: string;
+}
+
+function createApiError(error: unknown, fallbackMessage: string): ApiErrorWithCode {
+  const payload = error as { error?: string; message?: string; code?: string } | undefined;
+  const apiError = new Error(
+    payload?.error || payload?.message || fallbackMessage,
+  ) as ApiErrorWithCode;
+  if (payload?.code) {
+    apiError.code = payload.code;
+  }
+  return apiError;
+}
+
 function isLessonLike(value: unknown): value is Lesson {
   if (!value || typeof value !== "object") {
     return false;
@@ -768,6 +863,119 @@ export async function getWeakConcepts(): Promise<{
   return response.json();
 }
 
+export async function getUserTeams(): Promise<Team[]> {
+  const response = await apiFetch(`${API_URL}/teams`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch teams");
+  }
+
+  const data = (await response.json()) as { teams?: Team[] };
+  return data.teams ?? [];
+}
+
+export async function getGeneralHiveStatus(): Promise<GeneralHiveStatus> {
+  const response = await apiFetch(`${API_URL}/general-hive`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch General Hive");
+  }
+
+  const data = (await response.json()) as { generalHive: GeneralHiveStatus };
+  return data.generalHive;
+}
+
+export async function joinGeneralHive(): Promise<{
+  message: string;
+  generalHive: GeneralHiveStatus;
+}> {
+  const response = await apiFetch(`${API_URL}/general-hive/join`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to join General Hive");
+  }
+
+  return response.json();
+}
+
+export async function getTeamDetails(teamId: string): Promise<TeamDetails> {
+  const response = await apiFetch(`${API_URL}/teams/${encodeURIComponent(teamId)}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch team details");
+  }
+
+  return response.json();
+}
+
+export async function getTeamLeaderboard(teamId: string): Promise<TeamLeaderboardResponse> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/leaderboard`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch team leaderboard");
+  }
+
+  return response.json();
+}
+
+export async function getUserInvitations(): Promise<TeamInvitationWithTeam[]> {
+  const response = await apiFetch(`${API_URL}/invitations`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to fetch invitations");
+  }
+
+  const data = (await response.json()) as { invitations?: TeamInvitationWithTeam[] };
+  return data.invitations ?? [];
+}
+
+export async function acceptInvitation(inviteCode: string): Promise<{
+  message: string;
+  team: Team;
+}> {
+  const response = await apiFetch(
+    `${API_URL}/invitations/${encodeURIComponent(inviteCode)}/accept`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to accept invitation");
+  }
+
+  return response.json();
+}
+
+export async function rejectInvitation(inviteCode: string): Promise<{
+  message: string;
+}> {
+  const response = await apiFetch(
+    `${API_URL}/invitations/${encodeURIComponent(inviteCode)}/reject`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to reject invitation");
+  }
+
+  return response.json();
+}
+
 export async function getLessonProgress(
   pdfId: string,
   lessonIndex: number,
@@ -793,6 +1001,182 @@ export async function markLectureComplete(
   if (!response.ok) {
     throw new Error(`Failed to mark lecture complete (HTTP ${response.status})`);
   }
+  return response.json();
+}
+
+// ─── Daily Drill ─────────────────────────────────────────────────────────
+
+export type DailyMode =
+  | "speed-run"
+  | "accuracy-only"
+  | "dark-mode"
+  | "double-or-nothing";
+
+export interface DrillQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  pdfId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  decayDays: number;
+}
+
+export interface DrillGradeResult {
+  correct: boolean;
+  correctIndex: number;
+  correctOption: string;
+}
+
+export async function getDailyDrill(): Promise<{
+  questions: DrillQuestion[];
+  dailyMode: DailyMode;
+}> {
+  const response = await apiFetch(`${API_URL}/users/daily-drill`);
+  if (!response.ok) throw new Error("Failed to fetch daily drill");
+  return response.json();
+}
+
+export async function gradeDrillQuestion(
+  pdfId: string,
+  lessonIndex: number,
+  questionId: string,
+  selectedIndex: number,
+): Promise<DrillGradeResult> {
+  const response = await apiFetch(`${API_URL}/users/daily-drill/grade`, {
+    method: "POST",
+    body: JSON.stringify({ pdfId, lessonIndex, questionId, selectedIndex }),
+  });
+  if (!response.ok) throw new Error("Failed to grade drill question");
+  return response.json();
+}
+
+// ─── Lesson Echo ─────────────────────────────────────────────────────────
+
+export interface EchoQuestion {
+  planId: string;
+  pdfId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  question: { id: string; question: string; options: string[] };
+}
+
+export async function getEcho(): Promise<{ echo: EchoQuestion | null }> {
+  const response = await apiFetch(`${API_URL}/users/echo`);
+  if (!response.ok) return { echo: null };
+  return response.json();
+}
+
+export async function answerEcho(
+  planId: string,
+  pdfId: string,
+  lessonIndex: number,
+  questionId: string,
+  selectedIndex: number,
+): Promise<{ correct: boolean; correctIndex: number; correctOption: string }> {
+  const response = await apiFetch(`${API_URL}/users/echo/answer`, {
+    method: "POST",
+    body: JSON.stringify({ planId, pdfId, lessonIndex, questionId, selectedIndex }),
+  });
+  if (!response.ok) throw new Error("Failed to answer echo");
+  return response.json();
+}
+
+// ─── Streak Shield ───────────────────────────────────────────────────────
+
+export async function redeemStreakShield(): Promise<{
+  success: boolean;
+  streakShields: number;
+}> {
+  const response = await apiFetch(`${API_URL}/users/streak-shield`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to use streak shield");
+  }
+  return response.json();
+}
+
+// ─── Discovered features (for Quest Board + Did You Know) ─────────────────
+
+export async function getDiscoveredFeatures(): Promise<string[]> {
+  const response = await apiFetch(`${API_URL}/users/discovered-features`);
+  if (!response.ok) throw new Error("Failed to fetch discovered features");
+  const data = await response.json();
+  return Array.isArray(data.discoveredFeatures) ? data.discoveredFeatures : [];
+}
+
+export async function mergeDiscoveredFeatures(
+  features: string[],
+): Promise<string[]> {
+  const response = await apiFetch(`${API_URL}/users/discovered-features`, {
+    method: "POST",
+    body: JSON.stringify({ features }),
+  });
+  if (!response.ok) throw new Error("Failed to save discovered features");
+  const data = await response.json();
+  return Array.isArray(data.discoveredFeatures) ? data.discoveredFeatures : [];
+}
+
+// ─── League (Phase 4: Social Pressure) ───────────────────────────────────
+
+export type LeagueTier = "bronze" | "silver" | "gold";
+
+export interface LeagueMember {
+  name: string;
+  weeklyMastery: number;
+  isUser: boolean;
+  rank: number;
+}
+
+export interface LeagueData {
+  members: LeagueMember[];
+  userRank: number;
+  tier: LeagueTier;
+  leagueWeek: string;
+  promotionCount: number;
+  relegationCount: number;
+}
+
+export async function getLeague(): Promise<LeagueData> {
+  const response = await apiFetch(`${API_URL}/users/league`);
+  if (!response.ok) throw new Error("Failed to fetch league");
+  return response.json();
+}
+
+// ─── Rival events ────────────────────────────────────────────────────────
+
+export interface RivalEventBase {
+  id: string;
+  type: string;
+  message?: string;
+  pdfId?: string;
+  rivalName?: string;
+  occurredAt?: string;
+}
+
+export async function dismissRivalEvent(eventId: string): Promise<void> {
+  await apiFetch(`${API_URL}/users/rival-event/dismiss`, {
+    method: "POST",
+    body: JSON.stringify({ eventId }),
+  });
+}
+
+export interface Rival {
+  name: string;
+  currentDay: number;
+  yourDay: number;
+  simulated: boolean;
+  lastLesson?: { index: number; title: string; hoursAgo: number } | null;
+  ghostFlavor?: string;
+}
+
+export async function getRival(pdfId: string): Promise<{ rival: Rival | null }> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/rival`,
+  );
+  if (!response.ok) return { rival: null };
   return response.json();
 }
 

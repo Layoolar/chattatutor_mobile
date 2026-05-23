@@ -1,11 +1,21 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import { LogOut } from "lucide-react-native";
+import { CalendarCheck, Flame, LogOut } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { Skeleton } from "@/components/Skeleton";
 import { Button } from "@/components/Button";
+import { ActivityHeatmap } from "@/components/ActivityHeatmap";
+import { GradientIcon } from "@/components/GradientIcon";
+import { RankProgressCard } from "@/components/RankProgressCard";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
+import {
+  getUserActivity,
+  getUserRank,
+  type UserActivity,
+  type UserRank,
+} from "@/lib/api";
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -21,17 +31,33 @@ export default function ProfileScreen() {
   const router = useRouter();
   const toast = useToast();
   const [refreshing, setRefreshing] = useState(false);
+  const [activity, setActivity] = useState<UserActivity | null>(null);
+  const [rank, setRank] = useState<UserRank | null>(null);
+  const [activityLoading, setActivityLoading] = useState(true);
+
+  const loadActivity = useCallback(async () => {
+    const [a, r] = await Promise.allSettled([getUserActivity(), getUserRank()]);
+    if (a.status === "fulfilled") setActivity(a.value);
+    if (r.status === "fulfilled") setRank(r.value);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await loadActivity();
+      setActivityLoading(false);
+    })();
+  }, [loadActivity]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), loadActivity()]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't refresh profile");
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, toast]);
+  }, [refresh, loadActivity, toast]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -54,6 +80,43 @@ export default function ProfileScreen() {
           label="Email verified"
           value={user?.emailVerified ? "Yes" : "No"}
         />
+      </View>
+
+      {rank ? (
+        <View className="mt-6">
+          <RankProgressCard rank={rank} />
+        </View>
+      ) : null}
+
+      <View className="mt-6 gap-3">
+        <View className="flex-row items-center gap-3">
+          <GradientIcon size={40} radius={12} from="#6366f1" to="#7c3aed">
+            <CalendarCheck size={18} color="#ffffff" />
+          </GradientIcon>
+          <View className="flex-1">
+            <Text className="text-base font-bold text-slate-900">
+              Activity
+            </Text>
+            <Text className="text-xs text-slate-500">
+              Last 12 weeks of drill + lesson days.
+            </Text>
+          </View>
+          {activity ? (
+            <View className="flex-row items-center gap-1 rounded-full bg-rose-50 px-3 py-1.5">
+              <Flame size={12} color="#dc2626" />
+              <Text className="text-xs font-semibold text-rose-700">
+                {activity.currentStreak}-day
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <View className="rounded-2xl border border-slate-200 bg-white p-4">
+          {activityLoading ? (
+            <Skeleton.Line width="100%" height={92} />
+          ) : (
+            <ActivityHeatmap activityDates={activity?.activityDates ?? []} />
+          )}
+        </View>
       </View>
 
       <View className="mt-8">

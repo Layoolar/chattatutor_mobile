@@ -70,7 +70,7 @@ function collectMissedQuestions(
       (
         item,
       ): item is { question: BossQuizQuestion; detail: BossQuizResultDetail } =>
-        Boolean(item.detail) && !item.detail.correct,
+        item.detail !== undefined && !item.detail.correct,
     );
 }
 
