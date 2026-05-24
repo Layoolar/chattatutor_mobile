@@ -101,6 +101,7 @@ export interface Lesson {
   quizQuestions?: LessonQuizQuestion[];
   visuals?: (VisualSpec | null)[];
   conceptTypes?: (ConceptType | null)[];
+  sectionIds?: string[];
   sections?: LearningSection[];
 }
 
@@ -365,6 +366,7 @@ export interface GeneralHiveStatus {
 
 export interface ApiErrorWithCode extends Error {
   code?: string;
+  status?: number;
 }
 
 function createApiError(error: unknown, fallbackMessage: string): ApiErrorWithCode {
@@ -480,6 +482,43 @@ export interface StudyPlanResponse {
   totalDays?: number;
   status?: string;
   qualityStatus?: string;
+}
+
+export type QualityReportTargetType = "section" | "visual" | "flashcard" | "question";
+export type QualityReportKind = "inaccurate" | "unclear" | "missing_source" | "other";
+
+export interface CreateQualityReportPayload {
+  courseId: string;
+  sectionId: string;
+  targetType: QualityReportTargetType;
+  targetId: string;
+  kind?: QualityReportKind;
+  anchorText?: string;
+  userComment?: string;
+}
+
+export interface QualityReportResponse {
+  report: {
+    id: string;
+    courseId: string;
+    sectionId: string;
+    targetType: QualityReportTargetType;
+    targetId: string;
+    kind: QualityReportKind;
+    status: string;
+    anchorText?: string | null;
+    userComment?: string | null;
+    createdAt?: string;
+  };
+  autoRegen?: {
+    status: string;
+    reason?: string;
+    jobId?: string;
+  };
+}
+
+export interface ExplainSlideResponse {
+  explanation: string;
 }
 
 function normalizeStudyPlanResponse(data: StudyPlanResponse): StudyPlanResponse {
@@ -884,6 +923,49 @@ export async function getLesson(pdfId: string, lessonIndex: number): Promise<Les
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || "Failed to fetch lesson");
   }
+  return response.json();
+}
+
+export async function explainSlide(
+  pdfId: string,
+  lessonIndex: number,
+  slideText: string,
+  slideIndex: number,
+  isFlashcard = false,
+): Promise<ExplainSlideResponse> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/explain-slide`,
+    {
+      method: "POST",
+      body: JSON.stringify({ slideText, slideIndex, isFlashcard }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const err = createApiError(error, "Failed to explain this slide");
+    err.status = response.status;
+    throw err;
+  }
+
+  return response.json();
+}
+
+export async function createQualityReport(
+  payload: CreateQualityReportPayload,
+): Promise<QualityReportResponse> {
+  const response = await apiFetch(`${API_URL}/quality-reports`, {
+    method: "POST",
+    body: JSON.stringify({ kind: "inaccurate", ...payload }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const err = createApiError(error, "Failed to submit report");
+    err.status = response.status;
+    throw err;
+  }
+
   return response.json();
 }
 

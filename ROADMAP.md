@@ -615,19 +615,21 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
 - [x] Wire `tree` → dagre TB
 - [x] Wire `network` → dagre + larger node spacing
 - [x] Wire `storymap` → dagre LR with wider nodes
-- [x] Soft dot-grid-style background for `network` and `flow` only
-- [ ] Per-type visual flourish (e.g. layer color bands, cycle pill shape)
+- [x] Soft dot-grid-style background for `network` and `flow`
+- [x] Per-type visual flourish: cycle rings, layer bands, timeline ticks, comparison divider, tree branch guides
+- [x] Per-type node polish: timeline badges, storymap accents, network accent strips, layer/chapter/phase styling
 - [ ] Test on a real lesson with each hierarchical layout type
 
 #### Phase 8.3 — Pan / zoom container
 
-- [ ] Pinch-to-zoom using `react-native-gesture-handler` `PinchGestureHandler`
+- [x] Expo Go-safe pinch-to-zoom via native touch handlers
+- [ ] Release-build pinch QA before considering `react-native-gesture-handler` wrappers
 - [x] Single-finger pan via nested horizontal/vertical `ScrollView`s
 - [x] Clamp zoom to 0.2× – 3× so wide/tall mobile diagrams can truly fit
 - [x] Button zoom controls: Zoom out / Fit / Zoom in
-- [ ] Double-tap to reset to fit-to-screen
+- [x] Double-tap to reset to fit-to-screen
 - [x] Fit-to-screen on initial mount (compute bounding box of node positions against width + height)
-- [ ] Smooth Reanimated spring on zoom reset
+- [x] Smooth JS zoom-to-fit reset (Reanimated intentionally avoided in this renderer)
 
 #### Phase 8.4 — Interactions
 
@@ -635,8 +637,11 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
 - [x] Auto-walkthrough animation: cascade highlight along `visual.interaction.highlightSequence`
 - [x] Walkthrough controls: Play / Pause / Skip / Reset (mirror web layout)
 - [x] Auto-step delay = 700ms
-- [ ] Entrance stagger animation on mount (40ms × node index, cap 480ms total)
+- [x] Reading-mode anchor spotlight on first anchor node
+- [x] Entrance stagger animation on mount (40ms × node index, cap 480ms total)
 - [x] Haptic tick on each highlight change
+- [ ] Auto-start walkthrough when the diagram first enters viewport
+- [ ] Reduced-motion support for spotlight, entrance, and cascade effects
 
 #### Phase 8.5 — Build Mode
 
@@ -650,15 +655,28 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
 - [x] Shake feedback when wrong (plain transform, Expo Go-safe)
 - [x] Hint button — reveal the active slot when stuck
 - [x] Completion celebration when every slot filled correctly (static confetti, Expo Go-safe)
-- [ ] Backend telemetry: `build_mode_complete` and `build_mode_hint` → POST `/api/events/build-mode`
+- [x] Completion cascade highlight through solved diagram after Build Mode finishes
+- [ ] Backend telemetry: `build_mode_start`, `build_mode_exit`, `build_mode_correct`, `build_mode_wrong_attempt`, `build_mode_complete`, `build_mode_hint` → POST `/api/events/build-mode`
 
 #### Phase 8.6 — Reporting + alternative interactions
 
-- [ ] "Report inaccurate diagram" button → `createQualityReport(targetType: "visual")`
-- [ ] "Explain this differently" inline button → existing `explainSlide` endpoint
+- [x] "Report inaccurate diagram" button → `createQualityReport(targetType: "visual")`
+- [x] "Report inaccurate content" button → `createQualityReport(targetType: "section")`
+- [x] "Explain this differently" inline button → existing `explainSlide` endpoint
 - [ ] Drag-and-drop placement as alternative to tap-to-place (PanGestureHandler)
-- [ ] Accessibility: TalkBack/VoiceOver labels on nodes and slots
-- [ ] Source anchors panel (already in lecture, link from visual)
+- [x] Accessibility: TalkBack/VoiceOver labels on nodes, slots, card bank, and zoom controls
+- [x] Source anchors panel linked from visual section when backend anchors exist
+- [ ] Full accessibility QA on Android TalkBack and iOS VoiceOver
+
+#### Visual engine remaining polish
+
+- [ ] Real-device QA pass across all 10 visual types with production lesson payloads
+- [ ] Drag-and-drop Build Mode placement using gesture-handler after stability QA
+- [ ] Build Mode backend telemetry event coverage
+- [ ] Auto-start walkthrough only when a diagram scrolls into view
+- [ ] Reduced-motion setting for visual effects
+- [ ] Full source-anchor provenance UI when backend sends exact source spans
+- [ ] Equation LaTeX renderer decision (still out of scope until math content needs it)
 
 #### Phase 8 — Out of scope
 

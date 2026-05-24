@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import {
+  type GestureResponderEvent,
   type LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -57,6 +58,12 @@ const CASCADE_STEP_MS = 250;
 const ENTRANCE_STEP_MS = 40;
 const ENTRANCE_MAX_DELAY_MS = 480;
 const READING_SPOTLIGHT_MS = 800;
+const DOUBLE_TAP_MS = 280;
+const TAP_MAX_MS = 260;
+const TAP_SLOP = 14;
+const DOUBLE_TAP_SLOP = 44;
+const ZOOM_ANIMATION_MS = 180;
+const ZOOM_ANIMATION_STEPS = 9;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.15;
@@ -262,6 +269,19 @@ function clampZoom(value: number): number {
 
 function roundZoom(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function touchDistance(touches: readonly { pageX: number; pageY: number }[]): number | null {
+  if (touches.length < 2) return null;
+  const [first, second] = touches;
+  return Math.hypot(first.pageX - second.pageX, first.pageY - second.pageY);
+}
+
+function touchDelta(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  return Math.hypot(start.x - end.x, start.y - end.y);
 }
 
 function hashString(value: string): number {
@@ -1130,6 +1150,18 @@ function DiagramNode({
   showDescription: boolean;
   onPress: () => void;
 }) {
+  const accessibilityLabel = buildMode
+    ? buildPlaced
+      ? `${placed.node.label}. ${buildAnchor ? "Anchor clue" : "Placed concept"}.`
+      : `${buildRoleLabel(placed, type)}. Empty diagram slot.`
+    : `${placed.node.label}${placed.node.description ? `. ${placed.node.description}` : ""}`;
+  const accessibilityHint = buildMode
+    ? buildPlaced
+      ? "Shows the concept already placed in this diagram."
+      : selectedCardId
+        ? "Double tap to place the selected concept card in this slot."
+        : "Choose a concept card below, then return to this slot."
+    : "Double tap to inspect this diagram node.";
   const feedbackStyle: ViewStyle = {
     opacity: visible ? (dimmed ? 0.35 : 1) : 0,
     transform: [
@@ -1186,7 +1218,8 @@ function DiagramNode({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={buildMode ? buildRoleLabel(placed, type) : placed.node.label}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
       >
         <View>
           {body}
@@ -1520,6 +1553,10 @@ export function VisualDiagram({
   const [zoom, setZoom] = useState(1);
   const wrongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomAnimationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const touchStartRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
 
   const activeBuildNodeId = useMemo(() => {
     if (!buildMode || buildDone) return null;
@@ -1540,6 +1577,13 @@ export function VisualDiagram({
     () => buildCards.filter((card) => !placedMap[card.id]),
     [buildCards, placedMap],
   );
+
+  const clearZoomAnimation = useCallback(() => {
+    if (zoomAnimationRef.current) {
+      clearInterval(zoomAnimationRef.current);
+      zoomAnimationRef.current = null;
+    }
+  }, []);
 
   const resetBuildMode = useCallback(() => {
     const initialPlaced: Record<string, boolean> = {};
@@ -1610,8 +1654,9 @@ export function VisualDiagram({
     return () => {
       if (wrongTimerRef.current) clearTimeout(wrongTimerRef.current);
       if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
+      clearZoomAnimation();
     };
-  }, []);
+  }, [clearZoomAnimation]);
 
   useEffect(() => {
     if (!isPlaying || highlightSequence.length === 0) return;
@@ -1836,8 +1881,37 @@ export function VisualDiagram({
   const zoomedCanvasOffsetY = -((contentHeight - scaledContentHeight) / 2);
 
   useEffect(() => {
+    clearZoomAnimation();
     setZoom(roundZoom(fitZoom));
-  }, [contentHeight, contentWidth, fitZoom, visual.type]);
+  }, [clearZoomAnimation, contentHeight, contentWidth, fitZoom, visual.type]);
+
+  const animateZoomTo = useCallback(
+    (targetZoom: number) => {
+      clearZoomAnimation();
+      const startZoom = zoom;
+      const endZoom = roundZoom(clampZoom(targetZoom));
+
+      if (Math.abs(startZoom - endZoom) < 0.01) {
+        setZoom(endZoom);
+        return;
+      }
+
+      let step = 0;
+      zoomAnimationRef.current = setInterval(() => {
+        step += 1;
+        const progress = Math.min(1, step / ZOOM_ANIMATION_STEPS);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const nextZoom = roundZoom(startZoom + (endZoom - startZoom) * eased);
+        setZoom(nextZoom);
+
+        if (progress >= 1) {
+          clearZoomAnimation();
+          setZoom(endZoom);
+        }
+      }, Math.max(16, Math.floor(ZOOM_ANIMATION_MS / ZOOM_ANIMATION_STEPS)));
+    },
+    [clearZoomAnimation, zoom],
+  );
 
   const handleCanvasLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = Math.round(event.nativeEvent.layout.width);
@@ -1845,19 +1919,97 @@ export function VisualDiagram({
   }, []);
 
   const handleZoomOut = useCallback(() => {
+    clearZoomAnimation();
     haptics.tick();
     setZoom((current) => roundZoom(clampZoom(current - ZOOM_STEP)));
-  }, []);
+  }, [clearZoomAnimation, haptics]);
 
   const handleZoomIn = useCallback(() => {
+    clearZoomAnimation();
     haptics.tick();
     setZoom((current) => roundZoom(clampZoom(current + ZOOM_STEP)));
-  }, []);
+  }, [clearZoomAnimation, haptics]);
 
   const handleFitZoom = useCallback(() => {
     haptics.tick();
-    setZoom(roundZoom(fitZoom));
-  }, [fitZoom]);
+    animateZoomTo(fitZoom);
+    setLiveMessage("Diagram reset to fit");
+  }, [animateZoomTo, fitZoom, haptics]);
+
+  const handleCanvasTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      const touches = event.nativeEvent.touches;
+      if (touches.length >= 2) {
+        const distance = touchDistance(touches);
+        if (distance) {
+          clearZoomAnimation();
+          pinchStartRef.current = { distance, zoom };
+          touchStartRef.current = null;
+        }
+        return;
+      }
+
+      const touch = touches[0];
+      if (touch) {
+        touchStartRef.current = { time: Date.now(), x: touch.pageX, y: touch.pageY };
+      }
+    },
+    [clearZoomAnimation, zoom],
+  );
+
+  const handleCanvasTouchMove = useCallback((event: GestureResponderEvent) => {
+    const touches = event.nativeEvent.touches;
+    if (touches.length < 2) return;
+
+    const distance = touchDistance(touches);
+    if (!distance) return;
+
+    if (!pinchStartRef.current) {
+      pinchStartRef.current = { distance, zoom };
+      return;
+    }
+
+    const nextZoom = roundZoom(
+      clampZoom(pinchStartRef.current.zoom * (distance / pinchStartRef.current.distance)),
+    );
+    setZoom(nextZoom);
+  }, [zoom]);
+
+  const handleCanvasTouchEnd = useCallback(
+    (event: GestureResponderEvent) => {
+      if (pinchStartRef.current) {
+        if (event.nativeEvent.touches.length < 2) {
+          pinchStartRef.current = null;
+          touchStartRef.current = null;
+          lastTapRef.current = null;
+          setLiveMessage(`Zoom ${Math.round(zoom * 100)} percent`);
+        }
+        return;
+      }
+
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (!start) return;
+
+      const endedTouch = event.nativeEvent.changedTouches?.[0] ?? event.nativeEvent.touches[0];
+      if (!endedTouch) return;
+
+      const now = Date.now();
+      const end = { x: endedTouch.pageX, y: endedTouch.pageY };
+      const isTap = now - start.time <= TAP_MAX_MS && touchDelta(start, end) <= TAP_SLOP;
+      if (!isTap) return;
+
+      const lastTap = lastTapRef.current;
+      if (lastTap && now - lastTap.time <= DOUBLE_TAP_MS && touchDelta(lastTap, end) <= DOUBLE_TAP_SLOP) {
+        lastTapRef.current = null;
+        handleFitZoom();
+        return;
+      }
+
+      lastTapRef.current = { time: now, x: end.x, y: end.y };
+    },
+    [handleFitZoom, zoom],
+  );
 
   if (visual.nodes.length === 0) {
     return (
@@ -1932,6 +2084,7 @@ export function VisualDiagram({
               disabled={!canZoomOut}
               accessibilityRole="button"
               accessibilityLabel="Zoom out"
+              accessibilityHint="Makes the diagram smaller. You can also pinch the diagram."
               style={{
                 height: 28,
                 width: 28,
@@ -1950,6 +2103,7 @@ export function VisualDiagram({
               onPress={handleFitZoom}
               accessibilityRole="button"
               accessibilityLabel="Fit diagram"
+              accessibilityHint="Resets the diagram to fit the card. You can also double tap the diagram."
               style={{
                 height: 28,
                 flexDirection: "row",
@@ -1970,6 +2124,7 @@ export function VisualDiagram({
               disabled={!canZoomIn}
               accessibilityRole="button"
               accessibilityLabel="Zoom in"
+              accessibilityHint="Makes the diagram larger. You can also pinch the diagram."
               style={{
                 height: 28,
                 width: 28,
@@ -1991,6 +2146,8 @@ export function VisualDiagram({
             {walkthroughIndex === -1 ? (
               <Pressable
                 onPress={startWalkthrough}
+                accessibilityRole="button"
+                accessibilityLabel="Start diagram walkthrough"
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -2013,6 +2170,8 @@ export function VisualDiagram({
                     haptics.tick();
                     setIsPlaying((current) => !current);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={isPlaying ? "Pause diagram walkthrough" : "Resume diagram walkthrough"}
                   style={{
                     height: 30,
                     width: 30,
@@ -2028,6 +2187,8 @@ export function VisualDiagram({
                 </Pressable>
                 <Pressable
                   onPress={stepForward}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next walkthrough step"
                   style={{
                     height: 30,
                     width: 30,
@@ -2043,6 +2204,8 @@ export function VisualDiagram({
                 </Pressable>
                 <Pressable
                   onPress={resetWalkthrough}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset diagram walkthrough"
                   style={{
                     height: 30,
                     width: 30,
@@ -2065,7 +2228,13 @@ export function VisualDiagram({
         ) : null}
       </View>
 
-      <View onLayout={handleCanvasLayout}>
+      <View
+        onLayout={handleCanvasLayout}
+        onTouchStart={handleCanvasTouchStart}
+        onTouchMove={handleCanvasTouchMove}
+        onTouchEnd={handleCanvasTouchEnd}
+        accessibilityLabel={`Interactive ${TYPE_LABELS[visual.type]} diagram. Pinch to zoom or double tap to reset.`}
+      >
         <ScrollView
           horizontal
           nestedScrollEnabled
@@ -2292,6 +2461,9 @@ export function VisualDiagram({
                     <Pressable
                       key={card.id}
                       onPress={() => handleCardPress(card)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Place ${card.label}`}
+                      accessibilityHint={activeBuildNode ? `Tests this card against ${activeBuildNode.label}.` : "Selects this concept card for the diagram."}
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
@@ -2341,6 +2513,9 @@ export function VisualDiagram({
                 <Pressable
                   onPress={handleHint}
                   disabled={!activeBuildNodeId}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show build hint"
+                  accessibilityHint="Reveals a clue for the highlighted diagram slot."
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -2382,6 +2557,8 @@ export function VisualDiagram({
                     haptics.tap();
                     resetBuildMode();
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Try Build Mode again"
                   style={{ borderRadius: 999, borderWidth: 1, borderColor: "#86efac", paddingHorizontal: 11, paddingVertical: 7 }}
                 >
                   <Text style={{ color: "#15803d", fontSize: 12, fontWeight: "800" }}>

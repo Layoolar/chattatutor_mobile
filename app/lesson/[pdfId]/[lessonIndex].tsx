@@ -49,8 +49,11 @@ import { Skeleton } from "@/components/Skeleton";
 import { VisualDiagram } from "@/components/VisualDiagram";
 import {
   chatWithAI,
+  createQualityReport,
+  explainSlide,
   getLesson,
   markLectureComplete,
+  type ApiErrorWithCode,
   type ChatMessage,
   type Lesson,
   type LearningSection,
@@ -81,6 +84,22 @@ function getSlideHtml(lesson: Lesson | null, slideIndex: number): string {
 
 function getSection(lesson: Lesson | null, slideIndex: number): LearningSection | undefined {
   return lesson?.sections?.[slideIndex];
+}
+
+function getSectionId(
+  lesson: Lesson | null,
+  slideIndex: number,
+  section: LearningSection | undefined,
+): string | null {
+  return section?.sectionId || lesson?.sectionIds?.[slideIndex] || null;
+}
+
+function getCourseIdFromSectionId(sectionId: string | null): string | null {
+  if (!sectionId) return null;
+  const lastColon = sectionId.lastIndexOf(":");
+  const previousColon = sectionId.lastIndexOf(":", lastColon - 1);
+  if (previousColon <= 0) return null;
+  return sectionId.slice(0, previousColon) || null;
 }
 
 function hasSoftLock(section: LearningSection | undefined): boolean {
@@ -119,6 +138,8 @@ class VisualSlotBoundary extends React.Component<
 
 type SlideProps = {
   width: number;
+  pdfId: string;
+  lessonIndex: number;
   lesson: Lesson;
   index: number;
   section: LearningSection | undefined;
@@ -132,6 +153,8 @@ type SlideProps = {
 
 function Slide({
   width,
+  pdfId,
+  lessonIndex,
   lesson,
   index,
   section,
@@ -142,6 +165,7 @@ function Slide({
   isFrontier,
   consecutiveSkips,
 }: SlideProps) {
+  const toast = useToast();
   const html = getSlideHtml(lesson, index);
   const softLock = hasSoftLock(section);
   const ackPending = softLock && isFrontier && ack === undefined;
@@ -149,11 +173,98 @@ function Slide({
   const hasVisualSlot = Array.isArray(lesson.visuals) && index < lesson.visuals.length;
   const buildModeEligible = isBuildModeEligible(visual);
   const visualNodeCount = Array.isArray(visual?.nodes) ? visual.nodes.length : 0;
+  const sectionId = getSectionId(lesson, index, section);
+  const courseId = getCourseIdFromSectionId(sectionId);
+  const sourceAnchors = (section?.sourceAnchors ?? []).filter(Boolean).slice(0, 4);
   const [diagramBuildMode, setDiagramBuildMode] = useState(false);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
+  const [reportingVisual, setReportingVisual] = useState(false);
+  const [reportingSection, setReportingSection] = useState(false);
 
   useEffect(() => {
     setDiagramBuildMode(false);
   }, [index, visual?.type, visualNodeCount]);
+
+  useEffect(() => {
+    setExplanation(null);
+    setExplaining(false);
+  }, [html, index]);
+
+  const handleExplainDifferently = useCallback(async () => {
+    const slideText = stripHtml(html);
+    if (!slideText) return;
+
+    setExplaining(true);
+    try {
+      const result = await explainSlide(pdfId, lessonIndex, slideText, index, false);
+      setExplanation(result.explanation);
+      haptics.success();
+    } catch (error) {
+      const apiError = error as ApiErrorWithCode;
+      if (apiError.status === 403) {
+        toast.error(apiError.message || "Premium subscription required for this explanation.");
+      } else {
+        toast.error(apiError.message || "Couldn't explain this slide right now.");
+      }
+    } finally {
+      setExplaining(false);
+    }
+  }, [html, index, lessonIndex, pdfId, toast]);
+
+  const handleReportVisual = useCallback(async () => {
+    if (!visual || !sectionId || !courseId) {
+      toast.error("Report unavailable for this slide.");
+      return;
+    }
+
+    setReportingVisual(true);
+    try {
+      const result = await createQualityReport({
+        courseId,
+        sectionId,
+        targetType: "visual",
+        targetId: `${sectionId}:visual`,
+        kind: "inaccurate",
+        anchorText: visual.theme?.summary || visual.theme?.title || section?.thesis || stripHtml(html).slice(0, 220),
+        userComment: "Learner reported this mobile diagram as inaccurate.",
+      });
+      haptics.success();
+      toast.success(result.autoRegen?.status === "queued" ? "Repair pass queued." : "Diagram report saved.");
+    } catch (error) {
+      const apiError = error as ApiErrorWithCode;
+      toast.error(apiError.message || "Couldn't submit the diagram report.");
+    } finally {
+      setReportingVisual(false);
+    }
+  }, [courseId, html, section?.thesis, sectionId, toast, visual]);
+
+  const handleReportSection = useCallback(async () => {
+    if (!sectionId || !courseId) {
+      toast.error("Report unavailable for this slide.");
+      return;
+    }
+
+    setReportingSection(true);
+    try {
+      const result = await createQualityReport({
+        courseId,
+        sectionId,
+        targetType: "section",
+        targetId: sectionId,
+        kind: "inaccurate",
+        anchorText: section?.thesis || stripHtml(html).slice(0, 220),
+        userComment: "Learner reported this lesson section as inaccurate.",
+      });
+      haptics.success();
+      toast.success(result.autoRegen?.status === "queued" ? "Repair pass queued." : "Content report saved.");
+    } catch (error) {
+      const apiError = error as ApiErrorWithCode;
+      toast.error(apiError.message || "Couldn't submit the content report.");
+    } finally {
+      setReportingSection(false);
+    }
+  }, [courseId, html, section?.thesis, sectionId, toast]);
 
   return (
     <View style={{ width, paddingHorizontal: SLIDE_HORIZONTAL_PADDING }}>
@@ -201,26 +312,49 @@ function Slide({
                 <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   Diagram
                 </Text>
-                {buildModeEligible ? (
+                <View className="flex-row items-center gap-2">
                   <Pressable
-                    onPress={() => {
-                      haptics.tap();
-                      setDiagramBuildMode((current) => !current);
-                    }}
-                    className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:opacity-90 ${
-                      diagramBuildMode ? "bg-slate-900" : "bg-indigo-50"
+                    onPress={handleReportVisual}
+                    disabled={reportingVisual || !sectionId || !courseId}
+                    accessibilityRole="button"
+                    accessibilityLabel="Report inaccurate diagram"
+                    accessibilityHint="Sends this diagram for quality review."
+                    className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 active:opacity-90 ${
+                      reportingVisual || !sectionId || !courseId
+                        ? "border-slate-200 bg-slate-50 opacity-50"
+                        : "border-rose-100 bg-rose-50"
                     }`}
                   >
-                    <Puzzle size={12} color={diagramBuildMode ? "#ffffff" : "#4f46e5"} />
-                    <Text
-                      className={`text-[11px] font-bold ${
-                        diagramBuildMode ? "text-white" : "text-indigo-700"
+                    {reportingVisual ? (
+                      <ActivityIndicator size="small" color="#be123c" />
+                    ) : (
+                      <Flag size={12} color="#be123c" />
+                    )}
+                    <Text className="text-[11px] font-bold text-rose-700">Report</Text>
+                  </Pressable>
+                  {buildModeEligible ? (
+                    <Pressable
+                      onPress={() => {
+                        haptics.tap();
+                        setDiagramBuildMode((current) => !current);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={diagramBuildMode ? "Exit Build Mode" : "Start Build Mode"}
+                      className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:opacity-90 ${
+                        diagramBuildMode ? "bg-slate-900" : "bg-indigo-50"
                       }`}
                     >
-                      {diagramBuildMode ? "Exit Build" : "Build"}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                      <Puzzle size={12} color={diagramBuildMode ? "#ffffff" : "#4f46e5"} />
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          diagramBuildMode ? "text-white" : "text-indigo-700"
+                        }`}
+                      >
+                        {diagramBuildMode ? "Exit Build" : "Build"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
               <VisualSlotBoundary key={`visual-${index}-${visual?.type ?? "unknown"}-${visualNodeCount}`}>
                 <VisualDiagram
@@ -229,6 +363,20 @@ function Slide({
                   buildMode={diagramBuildMode}
                 />
               </VisualSlotBoundary>
+              {sourceAnchors.length > 0 ? (
+                <View className="mt-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Source anchors
+                  </Text>
+                  <View className="mt-1.5 gap-1">
+                    {sourceAnchors.map((anchor, anchorIndex) => (
+                      <Text key={`${anchor}-${anchorIndex}`} className="text-xs leading-5 text-slate-600">
+                        {anchor}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : hasVisualSlot ? (
             <View className="mb-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
@@ -238,14 +386,77 @@ function Slide({
             </View>
           ) : null}
 
-          {html ? <RichContent html={html} /> : null}
+          {html ? (
+            <>
+              <RichContent html={html} />
+              <View className="mt-4 gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-3 py-2.5">
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-indigo-900">Need another angle?</Text>
+                  <Text className="mt-0.5 text-[11px] leading-4 text-indigo-700">
+                    Get a simpler explanation for this exact slide.
+                  </Text>
+                </View>
+                <View className="flex-row flex-wrap items-center gap-2">
+                  <Pressable
+                    onPress={handleExplainDifferently}
+                    disabled={explaining}
+                    accessibilityRole="button"
+                    accessibilityLabel="Explain this differently"
+                    className={`flex-row items-center gap-1.5 rounded-full px-3 py-2 active:opacity-90 ${
+                      explaining ? "bg-indigo-300" : "bg-indigo-600"
+                    }`}
+                  >
+                    {explaining ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Sparkles size={13} color="#ffffff" />
+                    )}
+                    <Text className="text-[11px] font-bold text-white">
+                      {explaining ? "Thinking" : "Explain"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleReportSection}
+                    disabled={reportingSection || !sectionId || !courseId}
+                    accessibilityRole="button"
+                    accessibilityLabel="Report inaccurate content"
+                    className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 active:opacity-90 ${
+                      reportingSection || !sectionId || !courseId
+                        ? "border-slate-200 bg-white/60 opacity-50"
+                        : "border-rose-100 bg-white"
+                    }`}
+                  >
+                    {reportingSection ? (
+                      <ActivityIndicator size="small" color="#be123c" />
+                    ) : (
+                      <Flag size={13} color="#be123c" />
+                    )}
+                    <Text className="text-[11px] font-bold text-rose-700">Report</Text>
+                  </Pressable>
+                </View>
+              </View>
+              {explanation ? (
+                <View className="mt-3 rounded-2xl border border-violet-100 bg-violet-50 p-3">
+                  <View className="flex-row items-center gap-2">
+                    <Sparkles size={14} color="#7c3aed" />
+                    <Text className="text-xs font-bold uppercase tracking-widest text-violet-600">
+                      Different explanation
+                    </Text>
+                  </View>
+                  <Text className="mt-2 text-sm leading-6 text-violet-950">
+                    {explanation}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : null}
 
           {ackPending ? (
             <View className="mt-6 border-t border-indigo-100 pt-4">
               {consecutiveSkips >= 2 ? (
                 <View className="mb-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5">
                   <Text className="text-xs leading-5 text-violet-900">
-                    <Text className="font-bold">Skipped twice in a row.</Text> Want a different angle on this idea? Try the AI chat tab.
+                    <Text className="font-bold">Skipped twice in a row.</Text> Want a different angle on this idea? Try Explain or the AI chat tab.
                   </Text>
                 </View>
               ) : null}
@@ -868,6 +1079,8 @@ export default function LessonDetailScreen() {
         ) : tab === "lecture" ? (
           <LectureTab
             windowWidth={windowWidth}
+            pdfId={String(pdfId)}
+            lessonIndex={index}
             lesson={lesson}
             slides={slides}
             descIndex={descIndex}
@@ -912,6 +1125,8 @@ export default function LessonDetailScreen() {
 
 type LectureTabProps = {
   windowWidth: number;
+  pdfId: string;
+  lessonIndex: number;
   lesson: Lesson;
   slides: number[];
   descIndex: number;
@@ -936,6 +1151,8 @@ type LectureTabProps = {
 
 function LectureTab({
   windowWidth,
+  pdfId,
+  lessonIndex,
   lesson,
   slides,
   descIndex,
@@ -1063,6 +1280,8 @@ function LectureTab({
         renderItem={({ item }) => (
           <Slide
             width={windowWidth}
+            pdfId={pdfId}
+            lessonIndex={lessonIndex}
             lesson={lesson}
             index={item}
             section={getSection(lesson, item)}
