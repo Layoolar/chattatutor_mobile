@@ -835,26 +835,28 @@ moment lives, and it's the single most important screen in the app.
 - [x] Optimistic insert at the top of the list on submit
 - [x] Disable submit while title or body is empty
 
-#### Hive chat (full surface — net new)
+#### Hive chat (full surface — net new) ✅ DONE
 
 > Backend has full chat stack at `/teams/:teamId/chats`, `/chats/:chatId`,
 > `/chats/:chatId/messages`. Web has it. Mobile has zero — no API wrappers,
 > no screen, no entry point.
 
-- [ ] Add API wrappers in `lib/api.ts`:
-  - [ ] `getTeamChats(teamId)` — `GET /teams/:teamId/chats`
-  - [ ] `createChat(teamId, ...)` — `POST /teams/:teamId/chats`
-  - [ ] `getChatMessages(chatId, cursor?, limit?)` — `GET /chats/:chatId/messages`
-  - [ ] `sendChatMessage(chatId, body)` — `POST /chats/:chatId/messages`
-  - [ ] `archiveChat(chatId)` — `DELETE /chats/:chatId`
-- [ ] Add API types: `TeamChat`, `ChatMessage`
-- [ ] New screen `app/hives/[teamId]/chats.tsx` — list of chats in the hive
-- [ ] New screen `app/hives/[teamId]/chats/[chatId].tsx` — message thread
-- [ ] Wire entry point from hive detail screen (`app/hives/[teamId].tsx`) — "Chat" CTA
-- [ ] Composer at the bottom of the chat thread with `KeyboardAvoidingView`
-- [ ] Polling or refresh-on-focus for new messages (websockets are out of V1 scope)
-- [ ] Add `Stack.Screen` registrations for both routes
-- [ ] Out of scope V1: typing indicators, read receipts, push notifications on new message (tied to Phase 7 push)
+- [x] Add API wrappers in `lib/api.ts`:
+  - [x] `getTeamChats(teamId)` — `GET /teams/:teamId/chats`
+  - [x] `createChat(teamId, name)` — `POST /teams/:teamId/chats` (admins only)
+  - [x] `getChatDetails(chatId)` — `GET /chats/:chatId`
+  - [x] `getChatMessages(chatId, { after?, limit? })` — `GET /chats/:chatId/messages`
+  - [x] `sendChatMessage(chatId, message)` — `POST /chats/:chatId/messages`
+  - [x] `archiveChat(chatId)` — `DELETE /chats/:chatId`
+- [x] Add API types: `TeamChat`, `ChatMessage`
+- [x] Inline chat list lives on the Chat tab of the hive detail screen (decided against a separate list route — keeps the user in context)
+- [x] New screen `app/hives/[teamId]/chats/[chatId].tsx` — message thread
+- [x] Wire entry point from hive detail Chat tab → tap a channel → push thread
+- [x] Composer at the bottom of the chat thread with `KeyboardAvoidingView`
+- [x] Refresh-on-focus for new messages (websockets are out of V1 scope)
+- [x] Add `Stack.Screen` registration for `hives/[teamId]/chats/[chatId]`
+- [x] Admins/owners can "New channel" from the Chat tab via bottom-sheet composer
+- [ ] Out of scope V1: typing indicators, read receipts, push notifications on new message (tied to Phase 7 push), pagination beyond the first 50 messages
 
 #### Decay quiz integration (forgetting-curve loop)
 

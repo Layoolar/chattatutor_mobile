@@ -1293,6 +1293,113 @@ export async function leaveTeam(teamId: string): Promise<{ message?: string }> {
   return response.json();
 }
 
+// ─── Hive Chat ───────────────────────────────────────────────────────────
+
+export interface TeamChat {
+  id: string;
+  teamId: string;
+  name: string;
+  status: "active" | "archived" | "locked";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
+  settings?: {
+    allowMemberMessages?: boolean;
+    rateLimit?: number;
+  };
+}
+
+export interface HiveChatMessage {
+  id: string;
+  userId: string;
+  username: string;
+  message: string;
+  createdAt: string;
+}
+
+export async function getTeamChats(teamId: string): Promise<{ chats: TeamChat[] }> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/chats`,
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to load hive chats");
+  }
+  return response.json();
+}
+
+export async function createChat(teamId: string, name: string): Promise<TeamChat> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/chats`,
+    {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to create chat");
+  }
+  return response.json();
+}
+
+export async function getChatDetails(chatId: string): Promise<TeamChat> {
+  const response = await apiFetch(`${API_URL}/chats/${encodeURIComponent(chatId)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to load chat");
+  }
+  return response.json();
+}
+
+export async function getChatMessages(
+  chatId: string,
+  opts?: { after?: string | null; limit?: number },
+): Promise<{ messages: HiveChatMessage[]; hasMore: boolean }> {
+  const params = new URLSearchParams();
+  if (opts?.after) params.set("after", opts.after);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const response = await apiFetch(
+    `${API_URL}/chats/${encodeURIComponent(chatId)}/messages${qs ? `?${qs}` : ""}`,
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to load messages");
+  }
+  return response.json();
+}
+
+export async function sendChatMessage(
+  chatId: string,
+  message: string,
+): Promise<HiveChatMessage> {
+  const response = await apiFetch(
+    `${API_URL}/chats/${encodeURIComponent(chatId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to send message");
+  }
+  return response.json();
+}
+
+export async function archiveChat(chatId: string): Promise<{ message?: string }> {
+  const response = await apiFetch(`${API_URL}/chats/${encodeURIComponent(chatId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to archive chat");
+  }
+  return response.json();
+}
+
 export async function inviteTeamMember(
   teamId: string,
   data: {

@@ -10,10 +10,11 @@ import {
   ScrollView,
   Share,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   BarChart3,
   BookOpen,
@@ -22,6 +23,7 @@ import {
   LogOut,
   MessageSquare,
   MoreHorizontal,
+  Plus,
   Send,
   Sparkles,
   Swords,
@@ -36,6 +38,8 @@ import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { haptics } from "@/lib/haptics";
 import {
+  createChat,
+  getTeamChats,
   getTeamDetails,
   getTeamChallengeLeaderboard,
   getTeamLeaderboard,
@@ -43,6 +47,7 @@ import {
   leaveTeam,
   type LeaderboardEntry,
   type TeamChallengeLeaderboardEntry,
+  type TeamChat,
   type TeamDetails,
   type TeamMember,
 } from "@/lib/api";
@@ -404,6 +409,8 @@ export default function HiveDetailScreen() {
   const [details, setDetails] = useState<TeamDetails | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [challengeLeaderboard, setChallengeLeaderboard] = useState<TeamChallengeLeaderboardEntry[]>([]);
+  const [chats, setChats] = useState<TeamChat[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<HiveTab>("members");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -413,6 +420,9 @@ export default function HiveDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatName, setNewChatName] = useState("");
+  const [newChatBusy, setNewChatBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!teamId) {
@@ -468,6 +478,36 @@ export default function HiveDetailScreen() {
       setRefreshing(false);
     }
   }, [load]);
+
+  const loadChats = useCallback(async () => {
+    if (!teamId) return;
+    setChatsLoading(true);
+    try {
+      const { chats: list } = await getTeamChats(teamId);
+      setChats(list ?? []);
+    } catch {
+      // Non-fatal — the Chat tab just shows the empty/error state.
+      setChats([]);
+    } finally {
+      setChatsLoading(false);
+    }
+  }, [teamId]);
+
+  // Load chats the first time the Chat tab is opened and refresh whenever
+  // the user comes back to this screen (covers sending messages elsewhere
+  // and returning to see the updated last-message count).
+  useEffect(() => {
+    if (activeTab === "chat" && chats.length === 0 && !chatsLoading) {
+      loadChats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === "chat") loadChats();
+    }, [activeTab, loadChats]),
+  );
 
   const currentMember = useMemo(
     () => details?.members.find((member) => member.userId === user?.id) ?? null,
@@ -592,6 +632,40 @@ export default function HiveDetailScreen() {
       pathname: "/course/[pdfId]",
       params: { pdfId: details.team.pdfId },
     });
+  };
+
+  const openChat = (chatId: string) => {
+    if (!teamId) return;
+    haptics.tap();
+    router.push({
+      pathname: "/hives/[teamId]/chats/[chatId]",
+      params: { teamId: String(teamId), chatId },
+    });
+  };
+
+  const handleCreateChat = async () => {
+    if (!teamId) return;
+    const name = newChatName.trim();
+    if (!name) {
+      toast.error("Give the channel a name");
+      return;
+    }
+    setNewChatBusy(true);
+    haptics.tap();
+    try {
+      const chat = await createChat(teamId, name);
+      setChats((current) => [...current, chat]);
+      setNewChatName("");
+      setNewChatOpen(false);
+      haptics.success();
+      toast.success("Channel created");
+      openChat(chat.id);
+    } catch (err) {
+      haptics.error();
+      toast.error(err instanceof Error ? err.message : "Couldn't create channel");
+    } finally {
+      setNewChatBusy(false);
+    }
   };
 
   const headerBack = () => {
@@ -978,20 +1052,93 @@ export default function HiveDetailScreen() {
               <View className="gap-3">
                 <TabHeader
                   title="Chat"
-                  subtitle="Realtime hive thread for coordinating studies"
+                  subtitle="Realtime hive channels for coordinating studies"
+                  count={chats.length || undefined}
                   icon={<MessageSquare size={18} color="#4f46e5" />}
                 />
-                <View className="rounded-3xl border border-dashed border-indigo-200 bg-white p-6 items-center">
-                  <View className="h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50">
-                    <MessageSquare size={22} color="#4f46e5" />
+
+                {isOwner || isAdmin ? (
+                  <Pressable
+                    onPress={() => {
+                      haptics.tick();
+                      setNewChatOpen(true);
+                    }}
+                    className="flex-row items-center gap-2 self-start rounded-full bg-indigo-600 px-4 py-2 active:bg-indigo-700"
+                  >
+                    <Plus size={14} color="#ffffff" />
+                    <Text className="text-sm font-semibold text-white">New channel</Text>
+                  </Pressable>
+                ) : null}
+
+                {chatsLoading && chats.length === 0 ? (
+                  <View className="gap-3">
+                    <Skeleton.Card height={70} />
+                    <Skeleton.Card height={70} />
                   </View>
-                  <Text className="mt-4 text-base font-extrabold text-slate-900">
-                    Hive chat is coming
-                  </Text>
-                  <Text className="mt-2 text-center text-sm leading-6 text-slate-500">
-                    The backend channel is ready — the mobile composer is the last piece. Until then, use Challenges and the leaderboards to stay coordinated.
-                  </Text>
-                </View>
+                ) : chats.length === 0 ? (
+                  <View className="rounded-3xl border border-dashed border-indigo-200 bg-white p-6 items-center">
+                    <View className="h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50">
+                      <MessageSquare size={22} color="#4f46e5" />
+                    </View>
+                    <Text className="mt-4 text-base font-extrabold text-slate-900">
+                      No channels yet
+                    </Text>
+                    <Text className="mt-2 text-center text-sm leading-6 text-slate-500">
+                      {isOwner || isAdmin
+                        ? "Create the first channel so your hive has a place to talk."
+                        : "Once an admin spins up a channel, it'll show here."}
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="gap-3">
+                    {chats.map((chat) => {
+                      const isActive = chat.status === "active";
+                      return (
+                        <Pressable
+                          key={chat.id}
+                          onPress={() => openChat(chat.id)}
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 active:bg-slate-50"
+                        >
+                          <View className="flex-row items-center gap-3">
+                            <View
+                              className={`h-10 w-10 items-center justify-center rounded-2xl ${
+                                isActive ? "bg-indigo-50" : "bg-slate-100"
+                              }`}
+                            >
+                              <MessageSquare
+                                size={18}
+                                color={isActive ? "#4f46e5" : "#94a3b8"}
+                              />
+                            </View>
+                            <View className="flex-1">
+                              <View className="flex-row items-center gap-2">
+                                <Text
+                                  className="text-sm font-bold text-slate-900"
+                                  numberOfLines={1}
+                                >
+                                  {chat.name}
+                                </Text>
+                                {!isActive ? (
+                                  <View className="rounded-full bg-slate-100 px-2 py-0.5">
+                                    <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                      {chat.status}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              <Text className="mt-0.5 text-xs text-slate-500">
+                                {typeof chat.messageCount === "number"
+                                  ? `${chat.messageCount} ${chat.messageCount === 1 ? "message" : "messages"}`
+                                  : "Open the channel"}
+                              </Text>
+                            </View>
+                            <ChevronRight size={16} color="#94a3b8" />
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             ) : null}
           </View>
@@ -1005,6 +1152,63 @@ export default function HiveDetailScreen() {
         canLeave={canLeave && !leaving}
         isOwner={!!isOwner}
       />
+
+      <Modal
+        visible={newChatOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNewChatOpen(false)}
+      >
+        <View className="flex-1 justify-end bg-slate-950/40">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            className="bg-white rounded-t-3xl"
+          >
+            <View className="px-5 pt-5 pb-2 flex-row items-center justify-between">
+              <Text className="text-lg font-extrabold text-slate-900">New channel</Text>
+              <Pressable
+                onPress={() => {
+                  haptics.tick();
+                  setNewChatOpen(false);
+                }}
+                hitSlop={8}
+                className="h-9 w-9 items-center justify-center rounded-full bg-slate-100 active:bg-slate-200"
+              >
+                <X size={16} color="#475569" />
+              </Pressable>
+            </View>
+            <View className="px-5 pb-6 gap-4">
+              <Text className="text-xs leading-5 text-slate-500">
+                Channels group related conversations — like "Quiz prep", "Off-topic", or a sprint name.
+              </Text>
+              <TextInput
+                value={newChatName}
+                onChangeText={setNewChatName}
+                placeholder="Channel name"
+                placeholderTextColor="#94a3b8"
+                maxLength={80}
+                autoFocus
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
+              />
+              <Pressable
+                onPress={handleCreateChat}
+                disabled={newChatBusy || newChatName.trim().length === 0}
+                className={`h-12 flex-row items-center justify-center rounded-full ${
+                  newChatBusy || newChatName.trim().length === 0
+                    ? "bg-slate-200"
+                    : "bg-indigo-600 active:bg-indigo-700"
+                }`}
+              >
+                {newChatBusy ? (
+                  <ActivityIndicator size="small" color="#475569" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Create channel</Text>
+                )}
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
