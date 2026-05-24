@@ -3,6 +3,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -15,11 +16,14 @@ import {
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import {
+  Bell,
   CalendarCheck,
   Check,
+  Clock3,
   Flame,
   LogOut,
   Settings2,
+  ShieldCheck,
   Sparkles,
   UserRound,
   Volume2,
@@ -43,10 +47,17 @@ import {
   getUserActivity,
   getUserRank,
   getUserTokens,
+  type PushPreferences,
   type TokenUsageData,
   type UserActivity,
   type UserRank,
 } from "@/lib/api";
+import {
+  DEFAULT_PUSH_PREFERENCES,
+  hasAnyPushPreference,
+  registerForPushNotificationsAsync,
+  unregisterStoredPushDeviceAsync,
+} from "@/lib/push-notifications";
 
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
 const CHECKOUT_REDIRECT_URL = "https://chattatutor.com/subscription-success";
@@ -55,16 +66,29 @@ type VoiceSpeed = "normal" | "slow";
 type ActiveSheet = "password" | "pricing" | null;
 
 interface ProfileSettings {
-  dailyReminders: boolean;
+  learningReminders: boolean;
+  socialAlerts: boolean;
+  accountAlerts: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
   voiceEnabled: boolean;
   voiceSpeed: VoiceSpeed;
 }
 
 const DEFAULT_SETTINGS: ProfileSettings = {
-  dailyReminders: true,
+  learningReminders: DEFAULT_PUSH_PREFERENCES.learningReminders,
+  socialAlerts: DEFAULT_PUSH_PREFERENCES.socialAlerts,
+  accountAlerts: DEFAULT_PUSH_PREFERENCES.accountAlerts,
+  quietHoursEnabled: DEFAULT_PUSH_PREFERENCES.quietHoursEnabled,
+  quietHoursStart: DEFAULT_PUSH_PREFERENCES.quietHoursStart,
+  quietHoursEnd: DEFAULT_PUSH_PREFERENCES.quietHoursEnd,
   voiceEnabled: true,
   voiceSpeed: "normal",
 };
+
+const QUIET_START_OPTIONS = ["20:00", "21:00", "22:00", "23:00"];
+const QUIET_END_OPTIONS = ["06:00", "07:00", "08:00", "09:00"];
 
 const PLAN_FEATURES: Record<"free" | "premium", string[]> = {
   free: [
@@ -109,6 +133,18 @@ function getStatusTone(status?: string | null): { bg: string; text: string; labe
     default:
       return { bg: "bg-slate-100", text: "text-slate-600", label: "Free" };
   }
+}
+
+function getPushPreferences(settings: ProfileSettings): PushPreferences {
+  return {
+    learningReminders: settings.learningReminders,
+    socialAlerts: settings.socialAlerts,
+    accountAlerts: settings.accountAlerts,
+    quietHoursEnabled: settings.quietHoursEnabled,
+    quietHoursStart: settings.quietHoursStart,
+    quietHoursEnd: settings.quietHoursEnd,
+    timezone: DEFAULT_PUSH_PREFERENCES.timezone,
+  };
 }
 
 function Field({
@@ -227,6 +263,8 @@ export default function ProfileScreen() {
   const [tokenUsage, setTokenUsage] = useState<TokenUsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<ProfileSettings>(DEFAULT_SETTINGS);
+  const [pushSyncing, setPushSyncing] = useState(false);
+  const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
   const [usernameEditing, setUsernameEditing] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -256,12 +294,34 @@ export default function ProfileScreen() {
       const raw = await AsyncStorage.getItem(PROFILE_SETTINGS_KEY);
       if (!raw) return;
 
-      const parsed = JSON.parse(raw) as Partial<ProfileSettings>;
+      const parsed = JSON.parse(raw) as Partial<ProfileSettings> & { dailyReminders?: boolean };
       setSettings({
-        dailyReminders:
-          typeof parsed.dailyReminders === "boolean"
-            ? parsed.dailyReminders
-            : DEFAULT_SETTINGS.dailyReminders,
+        learningReminders:
+          typeof parsed.learningReminders === "boolean"
+            ? parsed.learningReminders
+            : typeof parsed.dailyReminders === "boolean"
+              ? parsed.dailyReminders
+              : DEFAULT_SETTINGS.learningReminders,
+        socialAlerts:
+          typeof parsed.socialAlerts === "boolean"
+            ? parsed.socialAlerts
+            : DEFAULT_SETTINGS.socialAlerts,
+        accountAlerts:
+          typeof parsed.accountAlerts === "boolean"
+            ? parsed.accountAlerts
+            : DEFAULT_SETTINGS.accountAlerts,
+        quietHoursEnabled:
+          typeof parsed.quietHoursEnabled === "boolean"
+            ? parsed.quietHoursEnabled
+            : DEFAULT_SETTINGS.quietHoursEnabled,
+        quietHoursStart:
+          typeof parsed.quietHoursStart === "string"
+            ? parsed.quietHoursStart
+            : DEFAULT_SETTINGS.quietHoursStart,
+        quietHoursEnd:
+          typeof parsed.quietHoursEnd === "string"
+            ? parsed.quietHoursEnd
+            : DEFAULT_SETTINGS.quietHoursEnd,
         voiceEnabled:
           typeof parsed.voiceEnabled === "boolean"
             ? parsed.voiceEnabled
@@ -283,6 +343,42 @@ export default function ProfileScreen() {
       return next;
     });
   }, []);
+
+  const updatePushSettings = useCallback(
+    async (patch: Partial<ProfileSettings>) => {
+      const next = { ...settings, ...patch };
+      const preferences = getPushPreferences(next);
+
+      setSettings(next);
+      await AsyncStorage.setItem(PROFILE_SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+      setPushSyncing(true);
+      setPushStatus(null);
+
+      try {
+        if (!hasAnyPushPreference(preferences)) {
+          await unregisterStoredPushDeviceAsync();
+          setPushStatus("Push notifications paused on this device.");
+          toast.info("Push notifications paused.");
+          return;
+        }
+
+        const result = await registerForPushNotificationsAsync(preferences);
+        if (result.status === "registered") {
+          setPushStatus("This device is ready for push reminders.");
+          toast.success("Notification preferences saved.");
+        } else if (result.status === "denied") {
+          setPushStatus(result.message);
+          toast.error(result.message);
+        } else {
+          setPushStatus(result.message);
+          toast.info(result.message);
+        }
+      } finally {
+        setPushSyncing(false);
+      }
+    },
+    [settings, toast],
+  );
 
   useEffect(() => {
     (async () => {
@@ -450,6 +546,12 @@ export default function ProfileScreen() {
         : "Voice narration is off until you turn it back on.",
     [settings.voiceEnabled, settings.voiceSpeed],
   );
+  const pushEnabled = hasAnyPushPreference(getPushPreferences(settings));
+  const pushDescription = pushEnabled
+    ? settings.quietHoursEnabled
+      ? `Enabled. Quiet hours ${settings.quietHoursStart}-${settings.quietHoursEnd}.`
+      : "Enabled. Quiet hours are off."
+    : "Paused on this device.";
 
   if (loading) {
     return (
@@ -683,17 +785,123 @@ export default function ProfileScreen() {
               </GradientIcon>
               <View className="flex-1">
                 <Text className="text-base font-bold text-slate-900">Settings</Text>
-                <Text className="text-xs text-slate-500">Learning reminders, voice preferences, and security.</Text>
+                <Text className="text-xs text-slate-500">Push reminders, voice preferences, and security.</Text>
               </View>
+            </View>
+
+            <View className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 gap-3">
+              <View className="flex-row items-start gap-3">
+                <View className="mt-0.5 h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600">
+                  <Bell size={18} color="#ffffff" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-bold text-indigo-950">Push notifications</Text>
+                  <Text className="mt-1 text-sm leading-6 text-indigo-700">{pushDescription}</Text>
+                  {pushStatus ? (
+                    <Text className="mt-1 text-xs font-semibold text-indigo-600">{pushStatus}</Text>
+                  ) : null}
+                </View>
+                {pushSyncing ? <ActivityIndicator size="small" color="#4f46e5" /> : null}
+              </View>
+              <Pressable
+                onPress={() => updatePushSettings({})}
+                disabled={pushSyncing}
+                accessibilityRole="button"
+                accessibilityLabel="Sync push notification preferences"
+                className={`self-start rounded-full px-4 py-2 ${pushSyncing ? "bg-indigo-300" : "bg-indigo-600"}`}
+              >
+                <Text className="text-xs font-bold text-white">Sync this device</Text>
+              </Pressable>
             </View>
 
             <SettingToggle
               icon={CalendarCheck}
-              title="Daily reminders"
-              description="Keep daily-drill nudges on so your study rhythm stays visible once push registration lands."
-              value={settings.dailyReminders}
-              onValueChange={(value) => updateSettings({ dailyReminders: value })}
+              title="Learning reminders"
+              description="Daily drill, streak risk, weak-concept review, and next-session nudges."
+              value={settings.learningReminders}
+              onValueChange={(value) => updatePushSettings({ learningReminders: value })}
             />
+            <SettingToggle
+              icon={Bell}
+              title="Social + competition alerts"
+              description="Challenge invites, challenge results, hive updates, and league summaries."
+              value={settings.socialAlerts}
+              onValueChange={(value) => updatePushSettings({ socialAlerts: value })}
+            />
+            <SettingToggle
+              icon={ShieldCheck}
+              title="Account alerts"
+              description="Billing, trial, security, and subscription notices."
+              value={settings.accountAlerts}
+              onValueChange={(value) => updatePushSettings({ accountAlerts: value })}
+            />
+
+            <View className="rounded-2xl border border-slate-200 bg-white p-4 gap-3">
+              <View className="flex-row items-start gap-3">
+                <View className="mt-0.5 h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
+                  <Clock3 size={18} color="#334155" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-bold text-slate-900">Quiet hours</Text>
+                  <Text className="mt-1 text-sm leading-6 text-slate-500">
+                    Hold non-urgent learning and social nudges during your rest window.
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.quietHoursEnabled}
+                  onValueChange={(value) => updatePushSettings({ quietHoursEnabled: value })}
+                  trackColor={{ false: "#cbd5e1", true: "#818cf8" }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+              <View className="gap-2">
+                <Text className="text-xs font-bold uppercase tracking-wide text-slate-400">Starts</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {QUIET_START_OPTIONS.map((time) => (
+                    <Pressable
+                      key={time}
+                      disabled={!settings.quietHoursEnabled}
+                      onPress={() => updatePushSettings({ quietHoursStart: time })}
+                      className={`rounded-full px-3 py-2 ${
+                        settings.quietHoursStart === time ? "bg-slate-900" : "bg-slate-100"
+                      } ${settings.quietHoursEnabled ? "" : "opacity-50"}`}
+                    >
+                      <Text
+                        className={`text-xs font-bold ${
+                          settings.quietHoursStart === time ? "text-white" : "text-slate-600"
+                        }`}
+                      >
+                        {time}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <View className="gap-2">
+                <Text className="text-xs font-bold uppercase tracking-wide text-slate-400">Ends</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {QUIET_END_OPTIONS.map((time) => (
+                    <Pressable
+                      key={time}
+                      disabled={!settings.quietHoursEnabled}
+                      onPress={() => updatePushSettings({ quietHoursEnd: time })}
+                      className={`rounded-full px-3 py-2 ${
+                        settings.quietHoursEnd === time ? "bg-slate-900" : "bg-slate-100"
+                      } ${settings.quietHoursEnabled ? "" : "opacity-50"}`}
+                    >
+                      <Text
+                        className={`text-xs font-bold ${
+                          settings.quietHoursEnd === time ? "text-white" : "text-slate-600"
+                        }`}
+                      >
+                        {time}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+
             <SettingToggle
               icon={Volume2}
               title="Voice narration"

@@ -9,6 +9,10 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ToastProvider, useToast } from "@/lib/toast";
 import { onUnauthorized } from "@/lib/fetch";
+import {
+  configureNotificationPresentation,
+  installNotificationResponseListener,
+} from "@/lib/push-notifications";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -60,6 +64,17 @@ function UnauthorizedBridge() {
   return null;
 }
 
+function NotificationBridge() {
+  const router = useRouter();
+
+  useEffect(() => {
+    configureNotificationPresentation();
+    return installNotificationResponseListener(router);
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   return (
     <ErrorBoundary>
@@ -67,6 +82,7 @@ export default function RootLayout() {
         <ToastProvider>
           <AuthProvider>
             <UnauthorizedBridge />
+            <NotificationBridge />
             <AuthGate />
             <StatusBar style="dark" />
             <Stack

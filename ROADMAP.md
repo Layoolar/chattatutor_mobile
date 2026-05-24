@@ -349,16 +349,16 @@ Friction-y to build, retention multiplier.
 
 ### Phase 7 — Polish & native
 
-- [ ] **Expo Push** registration + token persistence
-  - [ ] Request permission after a real value moment, not on cold launch
-  - [ ] Persist Expo Push token server-side per device/session
-  - [ ] Handle logout, opt-out, reinstall, and token rotation cleanly
-  - [ ] Open the correct deep link when the user taps a notification
-- [ ] **Push preferences v1** in Profile
-  - [ ] Learning reminders toggle
-  - [ ] Social + competition alerts toggle
-  - [ ] Account/billing alerts toggle
-  - [ ] Quiet hours + local-time delivery window
+- [x] **Expo Push** registration + token persistence
+  - [x] Request permission after a real value moment, not on cold launch
+  - [x] Persist Expo Push token server-side per device/session
+  - [x] Handle logout, opt-out, reinstall, and token rotation cleanly
+  - [x] Open the correct deep link when the user taps a notification
+- [x] **Push preferences v1** in Profile
+  - [x] Learning reminders toggle
+  - [x] Social + competition alerts toggle
+  - [x] Account/billing alerts toggle
+  - [x] Quiet hours + local-time delivery window
 - [ ] **Push trigger pack v1**
   - [ ] **Daily review / daily drill** — morning or early-evening nudge when a drill is ready and the user has not studied yet that day
   - [ ] **Streak at risk** — one save-your-streak nudge near the user's preferred reminder window if they are about to lose an active streak
@@ -374,7 +374,7 @@ Friction-y to build, retention multiplier.
   - [ ] Never push for every quiz result, every lesson completion, every vote, or every community interaction
   - [ ] Suppress nudges shortly after the user was already active in-app
   - [ ] Every push must deep link to one useful destination, not just the home tab
-- [ ] **Universal / App Links** for verify-email + reset-password — see Phase 7.7 for the full breakdown
+- [ ] **Universal / App Links** for verify-email + reset-password — app config is wired; hosted domain files + EAS rebuild remain (see Phase 7.7)
 - [x] **Haptics** — `lib/haptics.ts` semantic helpers wired across taps, transitions, success/error
 - [x] **Reanimated** screen transitions + key interactions — flashcard flip, quiz transitions, lesson progress bar, confetti
 - [x] **Lesson reader redesign** — slide-based lecture with reveal teaching, soft-lock retrieval checks, 4-tab system
@@ -535,7 +535,7 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
   }
   ```
 - [ ] Hand off to web team: serve at `https://chattatutor.com/.well-known/apple-app-site-association` with `Content-Type: application/json`, no redirects, no auth, no gzip wrapper
-- [ ] Add `ios.associatedDomains: ["applinks:chattatutor.com"]` to `app.json`
+- [x] Add `ios.associatedDomains: ["applinks:chattatutor.com"]` to `app.json`
 - [ ] Verify file is reachable: `curl -i https://chattatutor.com/.well-known/apple-app-site-association` — must be 200 + correct content-type
 - [ ] Build via EAS (`eas build --profile production --platform ios`)
 - [ ] Install on a real device — Universal Links require a real device, not simulator
@@ -557,7 +557,7 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
   }]
   ```
 - [ ] Hand off to web team: serve at `https://chattatutor.com/.well-known/assetlinks.json` with `Content-Type: application/json`
-- [ ] Add `android.intentFilters` to `app.json` with `autoVerify: true` and the verify-email + reset-password paths
+- [x] Add `android.intentFilters` to `app.json` with `autoVerify: true` and the verify-email + reset-password paths
 - [ ] Verify file is reachable + correct format via Google's tool: <https://developers.google.com/digital-asset-links/tools/generator>
 - [ ] Build via EAS (`eas build --profile production --platform android`)
 - [ ] Install — Android verifies `assetlinks.json` at install time
@@ -769,15 +769,15 @@ moment lives, and it's the single most important screen in the app.
 
 ### Push notifications (Phase 7)
 
-- [ ] **Expo Push registration** — request permission at a value moment, persist token server-side, handle logout / opt-out / reinstall / rotation, deep-link routing on tap
-- [ ] **Push preferences** in Profile — learning / social / account toggles + quiet hours
+- [x] **Expo Push registration** — request permission at a value moment, persist token server-side, handle logout / opt-out / reinstall / rotation, deep-link routing on tap
+- [x] **Push preferences** in Profile — learning / social / account toggles + quiet hours
 - [ ] **Push trigger pack v1** — daily drill, streak at risk, weak-concept queue, next-session unlock, 1v1 challenge alerts, hive alerts, league summary, account alerts
 - [ ] **Push guardrails** — max 1 learning nudge / day, batch social alerts, suppress when user was just active, every push deep-links to one useful destination
 
 ### Deep linking (Phase 7.7)
 
-- [ ] **iOS Universal Links** — host AASA on chattatutor.com, add associatedDomains, EAS rebuild, real-device test
-- [ ] **Android App Links** — host assetlinks.json, add intentFilters with autoVerify, EAS rebuild, real-device test
+- [ ] **iOS Universal Links** — app config done; host AASA on chattatutor.com, EAS rebuild, real-device test
+- [ ] **Android App Links** — app config done; host assetlinks.json, EAS rebuild, real-device test
 - [ ] **Buffer 24h** for Apple CDN propagation; reinstall to re-verify Android
 
 ### Voice (Phase 7.5)

@@ -41,6 +41,39 @@ export interface TokenUsageData {
   plan: string;
 }
 
+export interface PushPreferences {
+  learningReminders: boolean;
+  socialAlerts: boolean;
+  accountAlerts: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  timezone: string;
+}
+
+export interface PushDevicePayload {
+  expoPushToken: string;
+  deviceId: string;
+  platform: "ios" | "android" | "web" | "unknown";
+  appVersion?: string | null;
+  preferences: PushPreferences;
+}
+
+export interface PushDeviceResponse {
+  device: {
+    id: string;
+    userId: string;
+    expoPushToken: string;
+    deviceId: string | null;
+    platform: string;
+    appVersion: string | null;
+    enabled: boolean;
+    preferences: PushPreferences;
+    lastRegisteredAt: string;
+    lastSeenAt: string;
+  };
+}
+
 export interface LearningPreferences {
   tone?: string;
   explanationLevel?: string;
@@ -666,6 +699,51 @@ export async function getUserTokens(): Promise<TokenUsageData> {
   if (!response.ok) throw new Error("Failed to fetch token usage");
   const data = await response.json();
   return data.data;
+}
+
+export async function registerPushDevice(
+  payload: PushDevicePayload,
+): Promise<PushDeviceResponse> {
+  const response = await apiFetch(`${API_URL}/users/push-devices`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to register push notifications");
+  }
+
+  return response.json();
+}
+
+export async function updatePushPreferences(
+  expoPushToken: string,
+  preferences: PushPreferences,
+): Promise<PushDeviceResponse> {
+  const response = await apiFetch(`${API_URL}/users/push-devices/preferences`, {
+    method: "PATCH",
+    body: JSON.stringify({ expoPushToken, preferences }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to update push preferences");
+  }
+
+  return response.json();
+}
+
+export async function unregisterPushDevice(expoPushToken: string): Promise<void> {
+  const response = await apiFetch(`${API_URL}/users/push-devices`, {
+    method: "DELETE",
+    body: JSON.stringify({ expoPushToken }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to unregister push notifications");
+  }
 }
 
 export async function createFlutterwaveCheckout(

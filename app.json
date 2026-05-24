@@ -15,14 +15,35 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chattatutor.mobile"
+      "bundleIdentifier": "com.chattatutor.mobile",
+      "associatedDomains": ["applinks:chattatutor.com"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAFBFC"
       },
-      "package": "com.chattatutor.mobile"
+      "package": "com.chattatutor.mobile",
+      "permissions": ["POST_NOTIFICATIONS"],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "chattatutor.com",
+              "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "chattatutor.com",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -30,6 +51,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       "expo-secure-store",
       "expo-font"
     ],
