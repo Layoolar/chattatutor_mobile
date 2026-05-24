@@ -1,5 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -12,6 +21,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react-native";
+import { Confetti } from "@/components/Confetti";
 import { Skeleton } from "@/components/Skeleton";
 import {
   QUIZ_PASS_MARK,
@@ -22,6 +32,8 @@ import {
   type QuizResultDetail,
   type QuizSubmissionResult,
 } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
+import { sfx } from "@/lib/sfx";
 import { useToast } from "@/lib/toast";
 
 type QuizAnswer = number | null;
@@ -44,6 +56,67 @@ function formatMissedQuestions(
     );
 }
 
+function OptionRow({
+  letter,
+  label,
+  isSelected,
+  onPress,
+}: {
+  letter: string;
+  label: string;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const selectedAnim = useSharedValue(isSelected ? 1 : 0);
+
+  useEffect(() => {
+    selectedAnim.value = withTiming(isSelected ? 1 : 0, { duration: 220 });
+    if (isSelected) {
+      scale.value = withSequence(
+        withTiming(0.97, { duration: 80 }),
+        withSpring(1, { damping: 12, stiffness: 220 }),
+      );
+    }
+  }, [isSelected, scale, selectedAnim]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={containerStyle}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          scale.value = withTiming(0.97, { duration: 80 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 14, stiffness: 220 });
+        }}
+        className={`rounded-2xl border px-4 py-4 ${
+          isSelected
+            ? "border-indigo-500 bg-indigo-50"
+            : "border-slate-200 bg-slate-50 active:bg-slate-100"
+        }`}
+      >
+        <View className="flex-row items-start gap-3">
+          <View
+            className={`mt-0.5 h-6 w-6 items-center justify-center rounded-full border ${
+              isSelected ? "border-indigo-500 bg-indigo-500" : "border-slate-300 bg-white"
+            }`}
+          >
+            <Text className={`text-xs font-bold ${isSelected ? "text-white" : "text-slate-500"}`}>
+              {letter}
+            </Text>
+          </View>
+          <Text className="flex-1 text-sm leading-6 text-slate-800">{label}</Text>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function LessonQuizScreen() {
   const router = useRouter();
   const toast = useToast();
@@ -63,6 +136,11 @@ export default function LessonQuizScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<QuizSubmissionResult | null>(null);
   const [totalLessons, setTotalLessons] = useState<number | null>(null);
+
+  const progress = useSharedValue(0);
+  const questionEntry = useSharedValue(1);
+  const resultEntry = useSharedValue(0);
+  const resultPlayedRef = useRef(false);
 
   useEffect(() => {
     if (!pdfId || Number.isNaN(index)) {
@@ -114,7 +192,50 @@ export default function LessonQuizScreen() {
   const nextLessonIndex = index + 1;
   const hasNextLesson = totalLessons != null && nextLessonIndex < totalLessons;
 
+  useEffect(() => {
+    const target = questions.length > 0 ? answeredCount / questions.length : 0;
+    progress.value = withTiming(target, { duration: 360, easing: Easing.out(Easing.cubic) });
+  }, [answeredCount, questions.length, progress]);
+
+  useEffect(() => {
+    questionEntry.value = 0;
+    questionEntry.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
+  }, [currentIndex, questionEntry]);
+
+  useEffect(() => {
+    if (!result) {
+      resultEntry.value = 0;
+      resultPlayedRef.current = false;
+      return;
+    }
+    if (resultPlayedRef.current) return;
+    resultPlayedRef.current = true;
+    resultEntry.value = withDelay(80, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }));
+    if (passed) {
+      haptics.success();
+      sfx.correct();
+    } else {
+      haptics.error();
+      sfx.wrong();
+    }
+  }, [result, passed, resultEntry]);
+
+  const progressBarStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
+
+  const questionEntryStyle = useAnimatedStyle(() => ({
+    opacity: questionEntry.value,
+    transform: [{ translateY: (1 - questionEntry.value) * 12 }],
+  }));
+
+  const resultEntryStyle = useAnimatedStyle(() => ({
+    opacity: resultEntry.value,
+    transform: [{ scale: 0.96 + resultEntry.value * 0.04 }],
+  }));
+
   const goBackToLesson = () => {
+    haptics.tick();
     router.replace({
       pathname: "/lesson/[pdfId]/[lessonIndex]",
       params: { pdfId: String(pdfId), lessonIndex: String(index) },
@@ -122,6 +243,7 @@ export default function LessonQuizScreen() {
   };
 
   const reviewWeakest = () => {
+    haptics.tap();
     if (hasFlashcards) {
       router.replace({
         pathname: "/lesson/[pdfId]/[lessonIndex]/flashcards",
@@ -129,28 +251,36 @@ export default function LessonQuizScreen() {
       });
       return;
     }
-
-    goBackToLesson();
-  };
-
-  const openNextLesson = () => {
-    if (!pdfId || !hasNextLesson) {
-      return;
-    }
-
     router.replace({
       pathname: "/lesson/[pdfId]/[lessonIndex]",
-      params: { pdfId: String(pdfId), lessonIndex: String(nextLessonIndex) },
+      params: { pdfId: String(pdfId), lessonIndex: String(index) },
     });
   };
 
+  const openNextLesson = () => {
+    if (!pdfId || !hasNextLesson) return;
+    haptics.tap();
+    sfx.tap();
+    // Pop the quiz screen first so it doesn't sit in the stack below the next
+    // lesson, then replace the current lesson screen with the next one. Using
+    // a plain string URL avoids an Expo Router quirk where object-form
+    // replace on the same dynamic route can no-op.
+    if (router.canGoBack()) router.back();
+    router.replace(`/lesson/${pdfId}/${nextLessonIndex}`);
+  };
+
   const resetQuiz = () => {
+    haptics.tap();
     setResult(null);
     setCurrentIndex(0);
     setAnswers(questions.map(() => null));
   };
 
   const handleSelectAnswer = (optionIndex: number) => {
+    if (answers[currentIndex] !== optionIndex) {
+      haptics.tick();
+      sfx.select();
+    }
     setAnswers((currentAnswers) => {
       const nextAnswers = [...currentAnswers];
       nextAnswers[currentIndex] = optionIndex;
@@ -158,11 +288,20 @@ export default function LessonQuizScreen() {
     });
   };
 
-  const handleSubmit = async () => {
-    if (!pdfId || Number.isNaN(index) || !canSubmit) {
-      return;
-    }
+  const goNext = () => {
+    haptics.tick();
+    setCurrentIndex((current) => Math.min(current + 1, questions.length - 1));
+  };
 
+  const goPrev = () => {
+    haptics.tick();
+    setCurrentIndex((current) => Math.max(current - 1, 0));
+  };
+
+  const handleSubmit = async () => {
+    if (!pdfId || Number.isNaN(index) || !canSubmit) return;
+
+    haptics.pop();
     setSubmitting(true);
     try {
       const submission = await submitQuiz(
@@ -172,6 +311,7 @@ export default function LessonQuizScreen() {
       );
       setResult(submission);
     } catch (err) {
+      haptics.error();
       toast.error(err instanceof Error ? err.message : "Couldn't submit quiz");
     } finally {
       setSubmitting(false);
@@ -216,102 +356,105 @@ export default function LessonQuizScreen() {
             <Skeleton.Card height={80} />
           </View>
         ) : result ? (
-          <View className="gap-5">
-            <View
-              className={`overflow-hidden rounded-3xl px-5 py-5 ${
-                passed ? "bg-slate-900" : "bg-white border border-rose-100"
-              }`}
-              style={{
-                shadowColor: passed ? "#312e81" : "#fb7185",
-                shadowOpacity: passed ? 0.18 : 0.08,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 5,
-              }}
-            >
-              {passed ? (
-                <View
-                  pointerEvents="none"
-                  className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-500/30"
-                />
-              ) : null}
-              <View className="flex-row items-start gap-4">
-                <View
-                  className={`h-14 w-14 items-center justify-center rounded-2xl ${
-                    passed ? "bg-white/10" : "bg-rose-50"
-                  }`}
-                >
-                  {passed ? (
-                    <CheckCircle2 size={28} color="#ffffff" />
-                  ) : (
-                    <CircleAlert size={28} color="#e11d48" />
-                  )}
-                </View>
-                <View className="flex-1">
-                  <Text
-                    className={`text-xs font-semibold uppercase tracking-[1.5px] ${
-                      passed ? "text-indigo-100" : "text-rose-500"
+          <Animated.View style={resultEntryStyle} className="gap-5">
+            <View className="relative">
+              {passed ? <Confetti /> : null}
+              <View
+                className={`overflow-hidden rounded-3xl px-5 py-5 ${
+                  passed ? "bg-slate-900" : "bg-white border border-rose-100"
+                }`}
+                style={{
+                  shadowColor: passed ? "#312e81" : "#fb7185",
+                  shadowOpacity: passed ? 0.18 : 0.08,
+                  shadowRadius: 18,
+                  shadowOffset: { width: 0, height: 10 },
+                  elevation: 5,
+                }}
+              >
+                {passed ? (
+                  <View
+                    pointerEvents="none"
+                    className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-500/30"
+                  />
+                ) : null}
+                <View className="flex-row items-start gap-4">
+                  <View
+                    className={`h-14 w-14 items-center justify-center rounded-2xl ${
+                      passed ? "bg-white/10" : "bg-rose-50"
                     }`}
                   >
-                    {passed ? "Lesson cleared" : "Keep drilling"}
-                  </Text>
-                  <Text
-                    className={`mt-2 text-3xl font-extrabold ${
-                      passed ? "text-white" : "text-slate-900"
-                    }`}
-                  >
-                    {result.score}%
-                  </Text>
-                  <Text
-                    className={`mt-2 text-sm leading-6 ${
-                      passed ? "text-white/75" : "text-slate-600"
-                    }`}
-                  >
-                    {passed
-                      ? `You passed the ${QUIZ_PASS_MARK}% mark. Course progress updates automatically from quiz performance.`
-                      : `You need ${QUIZ_PASS_MARK}% to clear this lesson. Review the misses, tighten recall, and take it again.`}
-                  </Text>
-                </View>
-              </View>
-
-              <View className="mt-5 flex-row gap-3">
-                <View className={`flex-1 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-slate-50"}`}>
-                  <Text className={`text-xs font-semibold ${passed ? "text-white/70" : "text-slate-500"}`}>
-                    Correct answers
-                  </Text>
-                  <Text className={`mt-1 text-xl font-extrabold ${passed ? "text-white" : "text-slate-900"}`}>
-                    {result.correctCount}/{result.total}
-                  </Text>
-                </View>
-                <View className={`flex-1 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-slate-50"}`}>
-                  <Text className={`text-xs font-semibold ${passed ? "text-white/70" : "text-slate-500"}`}>
-                    Personal best
-                  </Text>
-                  <Text className={`mt-1 text-xl font-extrabold ${passed ? "text-white" : "text-slate-900"}`}>
-                    {result.score}%
-                  </Text>
-                  {newPersonalBest ? (
-                    <Text className={`mt-1 text-xs font-semibold ${passed ? "text-emerald-200" : "text-emerald-600"}`}>
-                      New best run
+                    {passed ? (
+                      <CheckCircle2 size={28} color="#ffffff" />
+                    ) : (
+                      <CircleAlert size={28} color="#e11d48" />
+                    )}
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      className={`text-xs font-semibold uppercase tracking-[1.5px] ${
+                        passed ? "text-indigo-100" : "text-rose-500"
+                      }`}
+                    >
+                      {passed ? "Lesson cleared" : "Keep drilling"}
                     </Text>
-                  ) : personalBest != null ? (
-                    <Text className={`mt-1 text-xs ${passed ? "text-white/60" : "text-slate-500"}`}>
-                      Prior best {personalBest}%
+                    <Text
+                      className={`mt-2 text-3xl font-extrabold ${
+                        passed ? "text-white" : "text-slate-900"
+                      }`}
+                    >
+                      {result.score}%
                     </Text>
-                  ) : null}
+                    <Text
+                      className={`mt-2 text-sm leading-6 ${
+                        passed ? "text-white/75" : "text-slate-600"
+                      }`}
+                    >
+                      {passed
+                        ? `You passed the ${QUIZ_PASS_MARK}% mark. Course progress updates automatically from quiz performance.`
+                        : `You need ${QUIZ_PASS_MARK}% to clear this lesson. Review the misses, tighten recall, and take it again.`}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              {result.personalizedHook ? (
-                <View className={`mt-4 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-indigo-50"}`}>
-                  <Text className={`text-xs font-semibold uppercase tracking-wide ${passed ? "text-indigo-100" : "text-indigo-600"}`}>
-                    Momentum note
-                  </Text>
-                  <Text className={`mt-2 text-sm leading-6 ${passed ? "text-white/80" : "text-indigo-900"}`}>
-                    {result.personalizedHook}
-                  </Text>
+                <View className="mt-5 flex-row gap-3">
+                  <View className={`flex-1 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-slate-50"}`}>
+                    <Text className={`text-xs font-semibold ${passed ? "text-white/70" : "text-slate-500"}`}>
+                      Correct answers
+                    </Text>
+                    <Text className={`mt-1 text-xl font-extrabold ${passed ? "text-white" : "text-slate-900"}`}>
+                      {result.correctCount}/{result.total}
+                    </Text>
+                  </View>
+                  <View className={`flex-1 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-slate-50"}`}>
+                    <Text className={`text-xs font-semibold ${passed ? "text-white/70" : "text-slate-500"}`}>
+                      Personal best
+                    </Text>
+                    <Text className={`mt-1 text-xl font-extrabold ${passed ? "text-white" : "text-slate-900"}`}>
+                      {result.score}%
+                    </Text>
+                    {newPersonalBest ? (
+                      <Text className={`mt-1 text-xs font-semibold ${passed ? "text-emerald-200" : "text-emerald-600"}`}>
+                        New best run
+                      </Text>
+                    ) : personalBest != null ? (
+                      <Text className={`mt-1 text-xs ${passed ? "text-white/60" : "text-slate-500"}`}>
+                        Prior best {personalBest}%
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              ) : null}
+
+                {result.personalizedHook ? (
+                  <View className={`mt-4 rounded-2xl px-4 py-3 ${passed ? "bg-white/10" : "bg-indigo-50"}`}>
+                    <Text className={`text-xs font-semibold uppercase tracking-wide ${passed ? "text-indigo-100" : "text-indigo-600"}`}>
+                      Momentum note
+                    </Text>
+                    <Text className={`mt-2 text-sm leading-6 ${passed ? "text-white/80" : "text-indigo-900"}`}>
+                      {result.personalizedHook}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
             {missedQuestions.length > 0 ? (
@@ -422,12 +565,13 @@ export default function LessonQuizScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
+                  onPress={() => {
+                    haptics.tick();
                     router.replace({
                       pathname: "/course/[pdfId]",
                       params: { pdfId: String(pdfId) },
-                    })
-                  }
+                    });
+                  }}
                   className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 active:bg-indigo-100"
                 >
                   <ListChecks size={16} color="#4f46e5" />
@@ -437,7 +581,7 @@ export default function LessonQuizScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
+          </Animated.View>
         ) : questions.length === 0 ? (
           <View className="rounded-3xl border border-slate-200 bg-white px-5 py-6 gap-3">
             <Text className="text-lg font-bold text-slate-900">No quiz yet</Text>
@@ -477,14 +621,16 @@ export default function LessonQuizScreen() {
                 Hit {QUIZ_PASS_MARK}% or higher to clear the lesson and move the course forward automatically.
               </Text>
               <View className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                <View
-                  className="h-2 rounded-full bg-white"
-                  style={{ width: `${(answeredCount / questions.length) * 100}%` }}
+                <Animated.View
+                  style={[{ height: 8, borderRadius: 999, backgroundColor: "#ffffff" }, progressBarStyle]}
                 />
               </View>
             </View>
 
-            <View className="rounded-3xl border border-slate-200 bg-white p-5 gap-4">
+            <Animated.View
+              style={questionEntryStyle}
+              className="rounded-3xl border border-slate-200 bg-white p-5 gap-4"
+            >
               <View className="flex-row items-start justify-between gap-3">
                 <View className="flex-1">
                   <Text className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -502,43 +648,22 @@ export default function LessonQuizScreen() {
               </View>
 
               <View className="gap-3">
-                {currentQuestion.options.map((option, optionIndex) => {
-                  const isSelected = selectedAnswer === optionIndex;
-
-                  return (
-                    <Pressable
-                      key={`${currentQuestion.id}-${optionIndex}`}
-                      onPress={() => handleSelectAnswer(optionIndex)}
-                      className={`rounded-2xl border px-4 py-4 ${
-                        isSelected
-                          ? "border-indigo-500 bg-indigo-50"
-                          : "border-slate-200 bg-slate-50 active:bg-slate-100"
-                      }`}
-                    >
-                      <View className="flex-row items-start gap-3">
-                        <View
-                          className={`mt-0.5 h-6 w-6 items-center justify-center rounded-full border ${
-                            isSelected ? "border-indigo-500 bg-indigo-500" : "border-slate-300 bg-white"
-                          }`}
-                        >
-                          <Text className={`text-xs font-bold ${isSelected ? "text-white" : "text-slate-500"}`}>
-                            {String.fromCharCode(65 + optionIndex)}
-                          </Text>
-                        </View>
-                        <Text className="flex-1 text-sm leading-6 text-slate-800">
-                          {option}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                {currentQuestion.options.map((option, optionIndex) => (
+                  <OptionRow
+                    key={`${currentQuestion.id}-${optionIndex}`}
+                    letter={String.fromCharCode(65 + optionIndex)}
+                    label={option}
+                    isSelected={selectedAnswer === optionIndex}
+                    onPress={() => handleSelectAnswer(optionIndex)}
+                  />
+                ))}
               </View>
-            </View>
+            </Animated.View>
 
             <View className="gap-3">
               <View className="flex-row gap-3">
                 <Pressable
-                  onPress={() => setCurrentIndex((current) => Math.max(current - 1, 0))}
+                  onPress={goPrev}
                   disabled={currentIndex === 0}
                   className={`flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full border ${
                     currentIndex === 0
@@ -552,7 +677,7 @@ export default function LessonQuizScreen() {
 
                 {currentIndex < questions.length - 1 ? (
                   <Pressable
-                    onPress={() => setCurrentIndex((current) => Math.min(current + 1, questions.length - 1))}
+                    onPress={goNext}
                     className="flex-1 h-12 flex-row items-center justify-center gap-2 rounded-full bg-slate-900 active:bg-slate-800"
                   >
                     <Text className="text-sm font-semibold text-white">Next</Text>

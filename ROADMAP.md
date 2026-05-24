@@ -388,6 +388,153 @@ Friction-y to build, retention multiplier.
 - [ ] **App Store / Play Store** metadata + screenshots
 - [ ] **EAS Submit** dry run
 
+### Phase 7.5 — Tutor Brief voice (server-rendered TTS)
+
+> The server pipeline (ElevenLabs + S3) already runs and stores generated audio
+> per lesson. Mobile just plays the presigned audio URL with `expo-av` and
+> exposes mobile-native controls. V1 scope mirrors the web's
+> `LectureAudioPlayer`: one capped brief per lesson.
+
+#### Backend endpoints (already exist, no changes)
+
+- `GET /study-plans/:pdfId/narration` — narration map for the whole course
+- `POST /study-plans/:pdfId/lessons/:lessonIndex/brief-narration/retry` — generate or refresh the brief and mint a presigned URL
+- Premium gating: 403 if user lacks paid plan; 404 if voice not available for the lesson
+
+#### UI placement
+
+Strip directly below the lesson tab bar on the Lecture tab only:
+
+```
+┌──────────────────────────────┐
+│ ← Lesson N: Title            │
+├──────────────────────────────┤
+│ 📖 Lecture │ 🧠 │ 💬 │ 📕   │
+├──────────────────────────────┤
+│ ▶  Tutor brief · 0:00/1:24 1x … │
+├──────────────────────────────┤
+│  ◀ Slide 1/5     ▶           │
+│  [slide content]             │
+```
+
+#### Mobile checklist
+
+- [x] Add `getNarrationMap` and `generateLessonBriefNarration` to `lib/api.ts`
+- [x] Add `NarrationMapEntry`, `NarrationResult`, `VoiceUnavailableError` types
+- [x] Create `lib/voice-prefs.ts` — AsyncStorage-backed `{ voiceOn, playbackRate, hasEverPlayed }`
+- [x] Create `components/LectureAudioPlayer.tsx` using `expo-av` `Audio.Sound`
+  - [x] Play / pause toggle with haptic on start
+  - [x] Scrub bar — `@react-native-community/slider`
+  - [x] Time display `0:32 / 1:24`
+  - [x] Speed cycle button (`0.75x → 1x → 1.25x → 1.5x → 2x`)
+  - [x] Menu (`⋯`) → voice on/off toggle
+  - [x] Loading spinner, unavailable banner, error banner with retry
+  - [x] Presigned URL freshness check (≥55min old → call retry endpoint before play)
+- [x] Mount the player as a compact strip below the tab bar, visible only when `tab === "lecture"`
+- [x] Stop playback when navigating away from the lesson screen and when toggling voice off
+- [x] Premium gating: surface "Premium subscription required" on 403 (tap-through to pricing — deferred until pricing screen exists)
+- [ ] Pause on incoming call / route change (`expo-av` handles audio focus on iOS; verify Android in QA)
+- [ ] Telemetry: `voice_brief_play_started`, `voice_brief_completed`, `voice_brief_skipped`, `voice_brief_unavailable` (deferred — no analytics provider wired yet)
+
+#### Out of scope (V1)
+
+- Section-by-section narration (sections endpoint exists but web V1 doesn't expose it)
+- "Explain Aloud" inline (separate feature, deferred)
+- Background audio playback while phone is locked (mobile-natural: pauses on lock)
+- Auto-play on slide change (manual play only, like web)
+
+---
+
+### Phase 8 — Visual rendering engine
+
+> Mirror the web's visual-diagram engine on mobile so every lesson slide can
+> ship a diagram that's read-interactive, walkthrough-animated, and Build
+> Mode-playable. Reference: `chattatutor_frontend/components/visual-diagram.tsx`
+> (1552 lines, `@xyflow/react` + `dagre`). Mobile rebuild uses
+> `react-native-svg` for edges and absolutely-positioned `View`s for nodes.
+
+**Visual types to support** (10): `flow`, `tree`, `network`, `comparison`,
+`timeline`, `cycle`, `matrix`, `layers`, `equation`, `storymap`.
+
+#### Phase 8.0 — Foundation
+
+- [x] Port `VisualSpec`, `VisualNode`, `VisualEdge`, `VisualType`, `ConceptType` to `lib/api.ts`
+- [ ] Port `lib/visual-eligibility.ts` (Build Mode eligibility predicate)
+- [ ] Port `lib/visual-anchor.ts` (anchor node picker)
+- [ ] Install `dagre` (pure JS, runs in RN — used for `flow`/`tree`/`network`/`storymap`)
+- [ ] Confirm `react-native-svg` is wired (already installed via expo)
+
+#### Phase 8.1 — Read-mode rendering, simple layouts
+
+- [ ] `components/VisualDiagram.tsx` skeleton with theme map (10 types × color)
+- [ ] Layout dispatcher that branches by `visual.type`
+- [ ] `layersLayout` — vertical stack
+- [ ] `cycleLayout` — circular arrangement
+- [ ] `timelineLayout` — horizontal line (covers `timeline` + `equation`)
+- [ ] `gridLayout` — rows × cols (covers `matrix` + `comparison` with 2 cols)
+- [ ] Node renderers: `DefaultNode`, `LayerNode`, `CycleNode` (3 styles cover all types)
+- [ ] Theme tokens: per-type hex / highlight border / highlight bg / default border / canvas grad
+- [ ] Edge renderer (SVG): straight lines + arrow markers + dashed/solid/thick styles
+- [ ] Wire into `app/lesson/[pdfId]/[lessonIndex].tsx` slide rendering — show visual above the lecture HTML
+- [ ] Verify on a real lesson with each simple layout type
+
+#### Phase 8.2 — Read-mode rendering, hierarchical layouts
+
+- [ ] Dagre integration helper (`dagreLayout(nodes, edges, direction)`)
+- [ ] Wire `flow` → dagre LR
+- [ ] Wire `tree` → dagre TB
+- [ ] Wire `network` → dagre + larger node spacing
+- [ ] Wire `storymap` → dagre LR with wider nodes
+- [ ] Dot grid SVG background for `network` and `flow` only
+- [ ] Per-type visual flourish (e.g. layer color bands, cycle pill shape)
+- [ ] Test on a real lesson with each hierarchical layout type
+
+#### Phase 8.3 — Pan / zoom container
+
+- [ ] Pinch-to-zoom using `react-native-gesture-handler` `PinchGestureHandler`
+- [ ] Single-finger pan when zoomed
+- [ ] Clamp zoom to 0.5× – 3×
+- [ ] Double-tap to reset to fit-to-screen
+- [ ] Fit-to-screen on initial mount (compute bounding box of node positions)
+- [ ] Smooth Reanimated spring on zoom reset
+
+#### Phase 8.4 — Interactions
+
+- [ ] Tap-to-highlight a single node (toggle state, theme highlight ring)
+- [ ] Auto-walkthrough animation: cascade highlight along `visual.interaction.highlightSequence`
+- [ ] Walkthrough controls: Play / Pause / Skip / Reset (mirror web layout)
+- [ ] Auto-step delay = 700ms, manual-step delay = 2000ms (match web constants)
+- [ ] Entrance stagger animation on mount (40ms × node index, cap 480ms total)
+- [ ] Haptic tick on each highlight change
+
+#### Phase 8.5 — Build Mode
+
+- [ ] "Build Mode" toggle on the slide — only shown when `isBuildModeEligible(visual)`
+- [ ] Anchor selection on enter — call `pickAnchorIds(visual)` and pre-place those nodes
+- [ ] Empty slot scaffolds with role label (Layer N / Phase N / Slot N) + group hint
+- [ ] Card bank below the diagram (unplaced node labels as draggable chips)
+- [ ] Tap-to-place: tap a card, tap a slot — place if `cardId === slotId`, shake if wrong
+- [ ] Snap-into-place animation when correct (Reanimated spring)
+- [ ] Shake animation when wrong (sequence: -8px → +8px → -4px → 0)
+- [ ] Hint button — reveal the next anchor; costs XP
+- [ ] Completion celebration when every slot filled correctly (re-use `Confetti`)
+- [ ] Backend telemetry: `build_mode_complete` and `build_mode_hint` → POST `/api/events/build-mode`
+
+#### Phase 8.6 — Reporting + alternative interactions
+
+- [ ] "Report inaccurate diagram" button → `createQualityReport(targetType: "visual")`
+- [ ] "Explain this differently" inline button → existing `explainSlide` endpoint
+- [ ] Drag-and-drop placement as alternative to tap-to-place (PanGestureHandler)
+- [ ] Accessibility: TalkBack/VoiceOver labels on nodes and slots
+- [ ] Source anchors panel (already in lecture, link from visual)
+
+#### Phase 8 — Out of scope
+
+- LaTeX rendering for `equation` (falls back to default layout for now)
+- Custom SVG visual specs (only node-graph specs from the LLM are supported)
+- Authoring / editing diagrams (consume only)
+- Network type's true force-directed layout (dagre approximation is fine)
+
 ---
 
 ## Open decisions (product, not engineering)

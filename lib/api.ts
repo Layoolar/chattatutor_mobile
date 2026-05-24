@@ -398,6 +398,74 @@ export interface LearningSection {
     answer: string;
   };
   retrievalCheckSuppressed?: boolean;
+  sourceAnchors?: string[];
+}
+
+// ─── Visual Diagram ──────────────────────────────────────────────────────
+
+export type VisualType =
+  | "flow"
+  | "tree"
+  | "network"
+  | "comparison"
+  | "timeline"
+  | "cycle"
+  | "matrix"
+  | "layers"
+  | "equation"
+  | "storymap";
+
+export type ConceptType =
+  | "sequential"
+  | "relational"
+  | "hierarchical"
+  | "comparison"
+  | "spatial"
+  | "temporal"
+  | "causal"
+  | "cyclical"
+  | "categorical"
+  | "anatomical"
+  | "mathematical"
+  | "narrative"
+  | "argumentative"
+  | "procedural";
+
+export interface VisualNode {
+  id: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  group?: string;
+  state?: "default" | "highlighted";
+}
+
+export interface VisualEdge {
+  from: string;
+  to: string;
+  label?: string;
+  style?: "solid" | "dashed" | "thick";
+}
+
+export interface VisualSpec {
+  type: VisualType;
+  canvas: {
+    orientation: "horizontal" | "vertical";
+    aspectRatio?: string;
+  };
+  layout: {
+    alignment: "center" | "distributed";
+  };
+  nodes: VisualNode[];
+  edges: VisualEdge[];
+  interaction?: {
+    clickableNodes?: boolean;
+    highlightSequence?: string[];
+  };
+  theme?: {
+    title?: string;
+    summary?: string;
+  };
 }
 
 export interface StudyPlanResponse {
@@ -1260,12 +1328,13 @@ export async function getLessonProgress(
 export async function markLectureComplete(
   pdfId: string,
   lessonIndex: number,
+  sectionCheckAck?: Record<number, "correct" | "missed" | "skipped">,
 ): Promise<{ lectureCompletedAt: string | null }> {
   const response = await apiFetch(
     `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/lecture-complete`,
     {
       method: "POST",
-      body: JSON.stringify({ sectionCheckAck: {} }),
+      body: JSON.stringify({ sectionCheckAck: sectionCheckAck ?? {} }),
     },
   );
   if (!response.ok) {
@@ -1273,6 +1342,32 @@ export async function markLectureComplete(
   }
   return response.json();
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function chatWithAI(
+  pdfId: string,
+  question: string,
+  chatHistory: ChatMessage[] = [],
+): Promise<{ reply: string }> {
+  const response = await apiFetch(`${API_URL}/pdfs/${encodeURIComponent(pdfId)}/ask`, {
+    method: "POST",
+    body: JSON.stringify({ question, chatHistory }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error || "Failed to chat with AI");
+  }
+  const payload = await response.json();
+  return payload.data ?? payload;
+}
+
+// The PDF chunk endpoint is consumed directly from the lesson page via
+// `FileSystem.downloadAsync` so the binary stream stays on disk and never
+// crosses the JS bridge. No wrapper needed here.
 
 // ─── Daily Drill ─────────────────────────────────────────────────────────
 
@@ -1304,6 +1399,97 @@ export async function getDailyDrill(): Promise<{
 }> {
   const response = await apiFetch(`${API_URL}/users/daily-drill`);
   if (!response.ok) throw new Error("Failed to fetch daily drill");
+  return response.json();
+}
+
+// ─── Voice narration (Tutor Brief) ───────────────────────────────────────
+// Server pipeline generates audio per lesson (ElevenLabs → S3). Mobile just
+// plays the presigned URL. The persisted record stores `audioKey`; the API
+// response augments it with a `url` minted per request (default 1h TTL).
+
+export interface SectionNarration {
+  audioKey: string;
+  durationSec: number;
+  voiceId: string;
+  model: "eleven_v3";
+  voicePipelineVersion: string;
+  scriptHash: string;
+  characters: number;
+  generatedAt: string;
+  url?: string;
+}
+
+export type NarrationOutcome = "generated" | "cached" | "cost_capped" | "user_capped";
+
+export interface NarrationResult {
+  outcome: NarrationOutcome;
+  narration?: SectionNarration;
+  warning?: { code: "voice_url_signing_failed"; message: string };
+  reason?: {
+    code: "voice_cost_cap_hit" | "voice_user_cap_hit";
+    message: string;
+    currentSpendUsd?: number;
+    projectedSpendUsd?: number;
+    ceilingUsd?: number;
+    used?: number;
+    cap?: number;
+  };
+}
+
+export interface NarrationMapEntry {
+  lessonIndex: number;
+  // "lesson-brief" for V1; section IDs for legacy section-level entries.
+  sectionId: string;
+  target: "intro" | "section" | "lessonBrief";
+  url?: string;
+  audioKey?: string;
+  scriptHash?: string;
+  voiceId?: string;
+  generatedAt?: string;
+}
+
+export class VoiceUnavailableError extends Error {
+  status: number;
+  code?: string;
+  constructor(status: number, code?: string, message?: string) {
+    super(message || `Voice unavailable (${status})`);
+    this.name = "VoiceUnavailableError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function postNarration(url: string): Promise<NarrationResult> {
+  const response = await apiFetch(url, { method: "POST" });
+  if (!response.ok) {
+    let code: string | undefined;
+    let message: string | undefined;
+    try {
+      const body = await response.json();
+      code = body?.code;
+      message = body?.error || body?.message;
+    } catch {
+      // body might not be JSON — surface the status instead
+    }
+    throw new VoiceUnavailableError(response.status, code, message);
+  }
+  return response.json();
+}
+
+export async function generateLessonBriefNarration(
+  pdfId: string,
+  lessonIndex: number,
+): Promise<NarrationResult> {
+  return postNarration(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/brief-narration/retry`,
+  );
+}
+
+export async function getNarrationMap(
+  pdfId: string,
+): Promise<{ pdfId: string; sections: NarrationMapEntry[] }> {
+  const response = await apiFetch(`${API_URL}/study-plans/${encodeURIComponent(pdfId)}/narration`);
+  if (!response.ok) throw new VoiceUnavailableError(response.status);
   return response.json();
 }
 

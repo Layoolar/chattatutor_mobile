@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
   BookOpen,
@@ -79,6 +79,15 @@ export default function CourseDetailScreen() {
       setLoading(false);
     })();
   }, [load]);
+
+  // After passing a quiz the backend bumps `currentDay`, but this screen would
+  // keep showing the stale lock state until the user pulled to refresh. Refetch
+  // every time the screen regains focus so the unlock badge flips immediately.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
