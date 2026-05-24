@@ -804,9 +804,93 @@ moment lives, and it's the single most important screen in the app.
 - [ ] **App Privacy** disclosures matching what we actually collect
 - [ ] **Test plan** — TestFlight build + Play internal track before public release
 
-### Known content gaps to fill or cut
+### Phase 5.5 — Mobile parity with web (posting, hive chat, decay loop)
 
-- [ ] Decide on **community feed posting** — read-only for now, but if we keep the tab we should support replies + reactions at minimum
-- [ ] **Hive challenge leaderboards** — endpoint exists, no mobile surface
-- [ ] **Boss quiz** — exists; QA on a real completed course
-- [ ] **Decay quiz** flow — exists on backend, no mobile entry point
+> Surfaces that exist on web but were never built (or only half-built) on
+> mobile. Audited 2026-05-24. Mobile must reach feature parity for these
+> before we submit to stores.
+
+#### Community feed posting (plain-text) ✅ DONE
+
+> Mobile currently lists announcements and shows replies + reaction counts in
+> read-only mode. Backend supports full posting via existing endpoints.
+
+- [x] Add `createAnnouncementReply(announcementId, body)` to `lib/api.ts` — `POST /announcements/:id/replies`
+- [x] Add `toggleAnnouncementReaction(announcementId, emoji)` — `POST /announcements/:id/react`
+- [x] Add `toggleReplyReaction(announcementId, replyId, emoji)` — `POST /announcements/:id/replies/:replyId/react`
+- [x] On `app/community/[id].tsx`, add a sticky bottom composer with `TextInput` + Send button (plain-text only, no TipTap)
+- [x] On each announcement + reply, add an emoji bar (8-emoji whitelist matching backend) that toggles the reaction
+- [x] Optimistic update on reaction tap, rollback on error
+- [x] Toast on reply success, append new reply to the list, bump replyCount
+- [x] Out of scope: rich text formatting, image attachments, @mentions
+
+#### Suggestion posting ✅ DONE
+
+> Mobile can list + upvote suggestions. Cannot create new ones. Backend
+> endpoint exists.
+
+- [x] Add `createSuggestion({ title, body, category })` to `lib/api.ts` — `POST /suggestions`
+- [x] On `app/suggestions/index.tsx`, add a "Post a suggestion" CTA in the hero
+- [x] Modal composer with title (200 char cap) + category picker + body (5000 char cap)
+- [x] Optimistic insert at the top of the list on submit
+- [x] Disable submit while title or body is empty
+
+#### Hive chat (full surface — net new)
+
+> Backend has full chat stack at `/teams/:teamId/chats`, `/chats/:chatId`,
+> `/chats/:chatId/messages`. Web has it. Mobile has zero — no API wrappers,
+> no screen, no entry point.
+
+- [ ] Add API wrappers in `lib/api.ts`:
+  - [ ] `getTeamChats(teamId)` — `GET /teams/:teamId/chats`
+  - [ ] `createChat(teamId, ...)` — `POST /teams/:teamId/chats`
+  - [ ] `getChatMessages(chatId, cursor?, limit?)` — `GET /chats/:chatId/messages`
+  - [ ] `sendChatMessage(chatId, body)` — `POST /chats/:chatId/messages`
+  - [ ] `archiveChat(chatId)` — `DELETE /chats/:chatId`
+- [ ] Add API types: `TeamChat`, `ChatMessage`
+- [ ] New screen `app/hives/[teamId]/chats.tsx` — list of chats in the hive
+- [ ] New screen `app/hives/[teamId]/chats/[chatId].tsx` — message thread
+- [ ] Wire entry point from hive detail screen (`app/hives/[teamId].tsx`) — "Chat" CTA
+- [ ] Composer at the bottom of the chat thread with `KeyboardAvoidingView`
+- [ ] Polling or refresh-on-focus for new messages (websockets are out of V1 scope)
+- [ ] Add `Stack.Screen` registrations for both routes
+- [ ] Out of scope V1: typing indicators, read receipts, push notifications on new message (tied to Phase 7 push)
+
+#### Decay quiz integration (forgetting-curve loop)
+
+> Backend already exposes `GET /study-plans/:pdfId/lessons/:idx/decay-quiz`
+> and `POST .../submit`. Web triggers it via `?decay=1` URL param on the
+> lesson page. Mobile has zero trigger.
+
+The decay model on the backend is **elapsed-day decay**, not SM-2:
+`decayDays = (now - lessonCompletedAt) / day`. Lessons completed today are
+skipped; everything older is ranked by `decayDays` descending. Same data
+already feeds the Daily Drill (which mobile consumes).
+
+- [ ] Add `getDecayQuiz(pdfId, lessonIndex)` and `submitDecayQuiz(pdfId, lessonIndex, answers)` to `lib/api.ts`
+- [ ] Add `getReviewQueue()` to `lib/api.ts` — fetches the ranked list of decayed lessons (reuse the daily-drill ranking or expose a dedicated endpoint if the backend grows one)
+- [ ] **Review queue tile on Home tab** — card titled "N lessons are fading" listing the 3 most-decayed lessons with mini CTAs ("Refresh in ~2 min")
+- [ ] On tile tap, navigate to the lesson with a `decay=1` param: `/lesson/[pdfId]/[lessonIndex]?decay=1`
+- [ ] In the lesson page, when `decay === "1"` is present in params:
+  - [ ] Show a full-screen *Knowledge Refresh* overlay BEFORE the lecture content
+  - [ ] Render the decay quiz questions (4 multi-choice from `getDecayQuiz`)
+  - [ ] On submit ≥80%: success state, "decay clock reset, mastery restored", auto-dismiss into the lecture
+  - [ ] On submit <80%: still allow lecture entry but no review bonus
+  - [ ] Skip button — bypasses the overlay, no bonus, no penalty
+- [ ] Surface the 200-point "review bonus" in the quiz result mastery breakdown when `decay=1` was active for this entry
+- [ ] Out of scope: SM-2 algorithm, per-card retention modeling, server-side scheduling
+
+#### What we are NOT building (decisions logged)
+
+- **Certificate feature** — does not exist on web either. The **Passport** screen serves the equivalent role (tiered list of completed courses). Mobile already has parity.
+- **Rich text reply / suggestion bodies** — plain text only on mobile. TipTap is web-only per existing roadmap decision.
+- **Live websocket chat** — V1 uses polling / focus-refetch. Websockets ship with Phase 7 push notifications or later.
+
+### Already accessible — verified 2026-05-24
+
+These were previously marked as gaps but are actually working. Listed here for the audit trail.
+
+- [x] **Boss quiz** — `app/course/[pdfId]/boss-quiz.tsx`. Reached via the course page hero CTA when `currentDay >= lessons.length` ("Enter boss quiz") or the black bottom card ("Start boss quiz")
+- [x] **Hive challenge leaderboard** — rendered on the hive detail screen below the progress leaderboard (`app/hives/[teamId].tsx`)
+- [x] **Daily drill** — surfaces decayed lessons as drill questions (`app/daily-drill.tsx`)
+- [x] **Passport** — tiered completed-course list (`app/passport.tsx`), parity with web

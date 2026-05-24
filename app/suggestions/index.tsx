@@ -1,18 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronUp, Lightbulb, MessageSquare, Sparkles } from "lucide-react-native";
+import {
+  ChevronLeft,
+  ChevronUp,
+  Lightbulb,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  X,
+} from "lucide-react-native";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import {
+  createSuggestion,
   listSuggestions,
   toggleSuggestionUpvote,
   type Suggestion,
   type SuggestionCategory,
   type SuggestionStatus,
 } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import { useToast } from "@/lib/toast";
 
 const CATEGORIES: SuggestionCategory[] = ["feature", "bug", "improvement", "other"];
@@ -155,10 +173,173 @@ function SuggestionCard({
   );
 }
 
+interface ComposerProps {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (suggestion: Suggestion) => void;
+}
+
+function NewSuggestionComposer({ open, onClose, onCreate }: ComposerProps) {
+  const toast = useToast();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [category, setCategory] = useState<SuggestionCategory>("feature");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setTitle("");
+      setBody("");
+      setCategory("feature");
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  const trimmedTitle = title.trim();
+  const trimmedBody = body.trim();
+  const canSubmit = trimmedTitle.length > 0 && trimmedBody.length > 0 && !submitting;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    haptics.tap();
+    setSubmitting(true);
+    try {
+      const { suggestion } = await createSuggestion({
+        title: trimmedTitle,
+        body: trimmedBody,
+        category,
+      });
+      onCreate(suggestion);
+      toast.success("Suggestion posted");
+      haptics.success();
+      onClose();
+    } catch (err) {
+      haptics.error();
+      toast.error(err instanceof Error ? err.message : "Couldn't post suggestion");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={open}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end bg-slate-950/40">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          className="bg-white rounded-t-3xl"
+        >
+          <View className="px-5 pt-5 pb-3 flex-row items-center justify-between">
+            <Text className="text-lg font-extrabold text-slate-900">
+              New suggestion
+            </Text>
+            <Pressable
+              onPress={() => {
+                haptics.tick();
+                onClose();
+              }}
+              hitSlop={8}
+              className="h-9 w-9 items-center justify-center rounded-full bg-slate-100 active:bg-slate-200"
+            >
+              <X size={16} color="#475569" />
+            </Pressable>
+          </View>
+
+          <View className="px-5 pb-5 gap-4">
+            <View className="gap-2">
+              <Text className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Title
+              </Text>
+              <TextInput
+                value={title}
+                onChangeText={setTitle}
+                placeholder="A short, scannable summary"
+                placeholderTextColor="#94a3b8"
+                maxLength={200}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
+              />
+            </View>
+
+            <View className="gap-2">
+              <Text className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Category
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {CATEGORIES.map((c) => (
+                  <Pressable
+                    key={c}
+                    onPress={() => {
+                      haptics.tick();
+                      setCategory(c);
+                    }}
+                    className={`rounded-full px-3 py-2 ${
+                      category === c
+                        ? "bg-slate-900"
+                        : "bg-white border border-slate-200"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        category === c ? "text-white" : "text-slate-600"
+                      }`}
+                    >
+                      {CATEGORY_LABELS[c]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View className="gap-2">
+              <Text className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Details
+              </Text>
+              <TextInput
+                value={body}
+                onChangeText={setBody}
+                placeholder="What's the idea? Why does it matter?"
+                placeholderTextColor="#94a3b8"
+                multiline
+                maxLength={5000}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900"
+                style={{ minHeight: 140, textAlignVertical: "top" }}
+              />
+              <Text className="text-right text-[10px] text-slate-400">
+                {body.length}/5000
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              className={`h-12 flex-row items-center justify-center rounded-full ${
+                canSubmit ? "bg-indigo-600 active:bg-indigo-700" : "bg-slate-200"
+              }`}
+            >
+              <Text
+                className={`text-sm font-semibold ${
+                  canSubmit ? "text-white" : "text-slate-500"
+                }`}
+              >
+                {submitting ? "Posting…" : "Post suggestion"}
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
 export default function SuggestionsScreen() {
   const router = useRouter();
   const toast = useToast();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -299,6 +480,16 @@ export default function SuggestionsScreen() {
               </Text>
             </View>
           </View>
+          <Pressable
+            onPress={() => {
+              haptics.tap();
+              setComposerOpen(true);
+            }}
+            className="mt-4 self-start flex-row items-center gap-2 rounded-full bg-slate-900 px-4 py-2 active:bg-slate-800"
+          >
+            <Plus size={14} color="#ffffff" />
+            <Text className="text-sm font-semibold text-white">Post a suggestion</Text>
+          </Pressable>
         </View>
 
         <View className="gap-3">
@@ -389,6 +580,14 @@ export default function SuggestionsScreen() {
           ) : null}
         </View>
       )}
+
+      <NewSuggestionComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        onCreate={(suggestion) => {
+          setSuggestions((current) => [suggestion, ...current]);
+        }}
+      />
     </ScreenContainer>
   );
 }

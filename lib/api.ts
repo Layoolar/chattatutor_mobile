@@ -1279,6 +1279,20 @@ export async function getTeamDetails(teamId: string): Promise<TeamDetails> {
   return response.json();
 }
 
+export async function leaveTeam(teamId: string): Promise<{ message?: string }> {
+  const response = await apiFetch(
+    `${API_URL}/teams/${encodeURIComponent(teamId)}/leave`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to leave hive");
+  }
+
+  return response.json();
+}
+
 export async function inviteTeamMember(
   teamId: string,
   data: {
@@ -1421,6 +1435,99 @@ export async function toggleSuggestionUpvote(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw createApiError(error, "Failed to toggle suggestion vote");
+  }
+
+  return response.json();
+}
+
+export async function createSuggestion(payload: {
+  title: string;
+  body: string;
+  category: SuggestionCategory;
+}): Promise<{ suggestion: Suggestion }> {
+  const response = await apiFetch(`${API_URL}/suggestions`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to create suggestion");
+  }
+
+  return response.json();
+}
+
+// Backend whitelist — mirror exactly. Any change requires a coordinated update.
+export const ANNOUNCEMENT_REACTION_EMOJIS = [
+  "👍",
+  "❤️",
+  "🎉",
+  "🚀",
+  "😂",
+  "🙏",
+  "👀",
+  "🔥",
+] as const;
+export type AnnouncementReactionEmoji = (typeof ANNOUNCEMENT_REACTION_EMOJIS)[number];
+
+export async function createAnnouncementReply(
+  announcementId: string,
+  body: string,
+  parentReplyId?: string,
+): Promise<{ reply: AnnouncementReply }> {
+  const response = await apiFetch(
+    `${API_URL}/announcements/${encodeURIComponent(announcementId)}/replies`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body, parentReplyId }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to post reply");
+  }
+
+  return response.json();
+}
+
+export async function toggleAnnouncementReaction(
+  announcementId: string,
+  emoji: AnnouncementReactionEmoji,
+): Promise<{ added: boolean; count: number; emoji: AnnouncementReactionEmoji }> {
+  const response = await apiFetch(
+    `${API_URL}/announcements/${encodeURIComponent(announcementId)}/react`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to toggle reaction");
+  }
+
+  return response.json();
+}
+
+export async function toggleReplyReaction(
+  announcementId: string,
+  replyId: string,
+  emoji: AnnouncementReactionEmoji,
+): Promise<{ added: boolean; count: number; emoji: AnnouncementReactionEmoji }> {
+  const response = await apiFetch(
+    `${API_URL}/announcements/${encodeURIComponent(announcementId)}/replies/${encodeURIComponent(replyId)}/react`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw createApiError(error, "Failed to toggle reaction");
   }
 
   return response.json();
