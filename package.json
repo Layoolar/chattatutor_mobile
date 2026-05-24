@@ -13,6 +13,8 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/slider": "4.5.2",
+    "@types/dagre": "^0.7.54",
+    "dagre": "^0.8.5",
     "expo": "~51.0.28",
     "expo-auth-session": "~5.5.2",
     "expo-av": "~14.0.7",

@@ -374,15 +374,15 @@ Friction-y to build, retention multiplier.
   - [ ] Never push for every quiz result, every lesson completion, every vote, or every community interaction
   - [ ] Suppress nudges shortly after the user was already active in-app
   - [ ] Every push must deep link to one useful destination, not just the home tab
-- [ ] **Universal / App Links** for verify-email + reset-password
-- [ ] **Haptics** — streak gain, correct quiz, level up
-- [ ] **Reanimated** screen transitions + key interactions
-- [ ] **Lesson reader redesign** — move from the current stacked lecture layout to a more intentional slide/slider-style reading surface if the Phase 2 practice flows want it
-- [ ] **Flashcards polish** — Tinder-style swipe gestures, richer motion, haptics, and a more premium visual finish
-- [ ] **Practice surface polish** — align flashcards, quiz transitions, and lesson continuation UI into one cohesive interaction model
-- [ ] **Audio + SVG lesson enhancements** — fold richer media into the redesigned lesson reader instead of bolting them onto the current layout
+- [ ] **Universal / App Links** for verify-email + reset-password — see Phase 7.7 for the full breakdown
+- [x] **Haptics** — `lib/haptics.ts` semantic helpers wired across taps, transitions, success/error
+- [x] **Reanimated** screen transitions + key interactions — flashcard flip, quiz transitions, lesson progress bar, confetti
+- [x] **Lesson reader redesign** — slide-based lecture with reveal teaching, soft-lock retrieval checks, 4-tab system
+- [x] **Flashcards polish** — 3D flip animation, haptics on flip/rate, confetti on deck complete, animated card transitions
+- [x] **Practice surface polish** — flashcards / quiz / lesson reader share one interaction model with haptics + animated progress
+- [x] **Audio enhancements** — Tutor Brief player (Phase 7.5). SVG visual enhancements are tracked separately in Phase 8.
 - [ ] **MMKV** offline cache for last-read lessons
-- [ ] **expo-image** for image cache
+- [ ] **expo-image** for image cache (also tracked in Phase 7.6 with a concrete checklist)
 - [ ] **PostHog** parity with frontend (identify, capture)
 - [ ] **Sentry** error reporting
 - [ ] **App Store / Play Store** metadata + screenshots
@@ -445,79 +445,211 @@ Strip directly below the lesson tab bar on the Lecture tab only:
 
 ---
 
+### Phase 7.6 — Lesson polish quick wins
+
+> Small, mostly-already-on-backend items that lift the lesson surface without
+> any heavy lift. Each is sub-1-session of work. Order is the recommended
+> sequence (highest value × lowest cost first).
+
+#### Report inaccurate buttons
+
+> Backend endpoint `POST /quality-reports` already exists and writes a
+> `QualityReport` row. Web has a flag icon next to each section / visual /
+> flashcard / question with a modal form. Mirror that on mobile.
+
+- [ ] Add `createQualityReport(courseId, sectionId, targetType, targetId, kind, anchorText?, userComment?)` to `lib/api.ts`
+- [ ] Add `QualityReportTarget` type with `targetType: "section" | "visual" | "flashcard" | "question"`
+- [ ] Build `components/ReportInaccurateSheet.tsx` — bottom-sheet modal with anchor text preview + comment field + submit button
+- [ ] Wire a small `Flag` icon button into:
+  - [ ] Slide section (top-right of the slide card)
+  - [ ] Each flashcard (small flag button below the card)
+  - [ ] Each quiz question (next to the question text)
+- [ ] On submit: `haptics.tap()`, toast "Report saved" on success
+- [ ] Surface server's `autoRegen.status === "queued"` response with a different toast ("Repair pass queued")
+- [ ] Disable buttons if `courseId` not yet loaded (matches web)
+
+#### "Explain this differently" button
+
+> Backend endpoint `POST /study-plans/:pdfId/lessons/:idx/explain-slide` already
+> exists. Returns a re-toned explanation of the current slide. Web shows it as
+> a chip under the lecture HTML; mobile mirrors that.
+
+- [ ] Add `explainSlide(pdfId, lessonIndex, slideText, slideIndex)` to `lib/api.ts` — returns `{ explanation, status? }`
+- [ ] Add a `Sparkles` chip button below the lecture HTML on each slide
+- [ ] On tap: show inline loader → render the response in a violet card below the chip
+- [ ] Handle 403 → toast "Premium subscription required" with tap-through to pricing
+- [ ] Auto-hide explanation when user advances to next slide
+- [ ] Surface the "Want a different explanation?" nudge after two consecutive `skipped` retrieval checks (already wired in lesson page; this hooks the button up)
+
+#### expo-image swap
+
+> Drop-in for `<Image>` with built-in caching, blur placeholder, and faster
+> decode on Android. ~30 min total.
+
+- [ ] `npx expo install expo-image`
+- [ ] Replace `import { Image } from "react-native"` with `import { Image } from "expo-image"` in every component that loads remote images (lessons, hives, community, profile avatars)
+- [ ] Add `cachePolicy="memory-disk"` to remote images
+- [ ] Add `placeholder` with a small base64 blur (where useful — avatars, lesson hero)
+- [ ] Verify no `tintColor` consumers broke (expo-image doesn't accept `tintColor`; use `tintColor` prop differently)
+
+#### Real-fixes bug sweep
+
+> One session walking every flow as a real user, logging issues, then fixing in
+> one batch. Cannot enumerate ahead of time — this is the catch-all.
+
+- [ ] Walk: auth → upload → course detail → lesson lecture → slides → retrieval checks → flashcards → quiz → result → next-lesson nav
+- [ ] Walk: home → daily drill → quests → league → passport
+- [ ] Walk: hives list → create hive → hive detail → invite flow → general hive
+- [ ] Walk: community → suggestions → announcement detail
+- [ ] Walk: challenges list → create challenge → invite-code accept → live play → result
+- [ ] Walk: profile → settings → change password → sign out
+- [ ] Log every regression / dead-end / visual glitch
+- [ ] Fix in one batch with separate commits per area
+
+---
+
+### Phase 7.7 — Universal Links (HTTPS deep linking)
+
+> Currently we have custom scheme `chattatutor://` working for verify-email and
+> reset-password (Phase 0). Universal Links replace that with HTTPS URLs that
+> open the app when installed and fall back to the web page when not. Needs
+> hosting two files on the web domain + an Expo config update + a full EAS
+> rebuild — Universal Links do **not** work in Expo Go.
+
+#### Why we need it
+
+Verify-email and reset-password emails currently link to `https://chattatutor.com/...`. On a phone with the app installed, those still open in a browser instead of the native screen. Universal Links fix that. Same emails, same links, but they route to the app when possible.
+
+#### iOS — apple-app-site-association
+
+- [ ] Get production Team ID and bundle ID (`com.chattatutor.mobile`)
+- [ ] Write `apple-app-site-association` (no extension):
+  ```json
+  {
+    "applinks": {
+      "details": [{
+        "appID": "TEAM_ID.com.chattatutor.mobile",
+        "paths": ["/verify-email*", "/reset-password*"]
+      }]
+    }
+  }
+  ```
+- [ ] Hand off to web team: serve at `https://chattatutor.com/.well-known/apple-app-site-association` with `Content-Type: application/json`, no redirects, no auth, no gzip wrapper
+- [ ] Add `ios.associatedDomains: ["applinks:chattatutor.com"]` to `app.json`
+- [ ] Verify file is reachable: `curl -i https://chattatutor.com/.well-known/apple-app-site-association` — must be 200 + correct content-type
+- [ ] Build via EAS (`eas build --profile production --platform ios`)
+- [ ] Install on a real device — Universal Links require a real device, not simulator
+- [ ] Test by tapping a verify-email link from Apple Mail; expect the app to open
+- [ ] **Buffer 24h** for Apple's AASA CDN cache to settle if the file changes after first install
+
+#### Android — assetlinks.json
+
+- [ ] Get production SHA-256 fingerprint via `eas credentials` (or `keytool -list -keystore` if local)
+- [ ] Write `assetlinks.json`:
+  ```json
+  [{
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.chattatutor.mobile",
+      "sha256_cert_fingerprints": ["AA:BB:CC:..."]
+    }
+  }]
+  ```
+- [ ] Hand off to web team: serve at `https://chattatutor.com/.well-known/assetlinks.json` with `Content-Type: application/json`
+- [ ] Add `android.intentFilters` to `app.json` with `autoVerify: true` and the verify-email + reset-password paths
+- [ ] Verify file is reachable + correct format via Google's tool: <https://developers.google.com/digital-asset-links/tools/generator>
+- [ ] Build via EAS (`eas build --profile production --platform android`)
+- [ ] Install — Android verifies `assetlinks.json` at install time
+- [ ] Test by tapping a link from Gmail; expect the app to open
+- [ ] If broken: re-deploy file, then **uninstall + reinstall** the app to re-trigger verification
+
+#### Known tripwires
+
+- AASA / assetlinks must be served from the **exact** production domain — `app.chattatutor.com` won't claim `chattatutor.com` URLs
+- Apple uses a CDN — file changes can take up to 24h to propagate
+- Android verifies on install only — fixing a broken file requires reinstall
+- Expo Go cannot test Universal Links; need a TestFlight / preview EAS build
+- `apple-app-site-association` has no `.json` extension; web servers sometimes 404 on it
+
+---
+
 ### Phase 8 — Visual rendering engine
 
 > Mirror the web's visual-diagram engine on mobile so every lesson slide can
 > ship a diagram that's read-interactive, walkthrough-animated, and Build
 > Mode-playable. Reference: `chattatutor_frontend/components/visual-diagram.tsx`
 > (1552 lines, `@xyflow/react` + `dagre`). Mobile rebuild uses
-> `react-native-svg` for edges and absolutely-positioned `View`s for nodes.
+> Expo Go-safe React Native `View`s for edges and nodes after Android SVG
+> marker rendering crashed on lesson entry.
 
 **Visual types to support** (10): `flow`, `tree`, `network`, `comparison`,
 `timeline`, `cycle`, `matrix`, `layers`, `equation`, `storymap`.
 
-#### Phase 8.0 — Foundation
+#### Phase 8.0 — Foundation ✅ DONE
 
 - [x] Port `VisualSpec`, `VisualNode`, `VisualEdge`, `VisualType`, `ConceptType` to `lib/api.ts`
-- [ ] Port `lib/visual-eligibility.ts` (Build Mode eligibility predicate)
-- [ ] Port `lib/visual-anchor.ts` (anchor node picker)
-- [ ] Install `dagre` (pure JS, runs in RN — used for `flow`/`tree`/`network`/`storymap`)
-- [ ] Confirm `react-native-svg` is wired (already installed via expo)
+- [x] Port `lib/visual-eligibility.ts` (Build Mode eligibility predicate)
+- [x] Port `lib/visual-anchor.ts` (anchor node picker)
+- [x] Install `dagre` + `@types/dagre` (pure JS, runs in RN — used for `flow`/`tree`/`network`/`storymap`)
+- [x] Confirm `react-native-svg` is installed, then avoid SVG markers in lesson diagrams after Android crash QA
 
-#### Phase 8.1 — Read-mode rendering, simple layouts
+#### Phase 8.1 — Read-mode rendering, simple layouts ✅ DONE
 
-- [ ] `components/VisualDiagram.tsx` skeleton with theme map (10 types × color)
-- [ ] Layout dispatcher that branches by `visual.type`
-- [ ] `layersLayout` — vertical stack
-- [ ] `cycleLayout` — circular arrangement
-- [ ] `timelineLayout` — horizontal line (covers `timeline` + `equation`)
-- [ ] `gridLayout` — rows × cols (covers `matrix` + `comparison` with 2 cols)
-- [ ] Node renderers: `DefaultNode`, `LayerNode`, `CycleNode` (3 styles cover all types)
-- [ ] Theme tokens: per-type hex / highlight border / highlight bg / default border / canvas grad
-- [ ] Edge renderer (SVG): straight lines + arrow markers + dashed/solid/thick styles
-- [ ] Wire into `app/lesson/[pdfId]/[lessonIndex].tsx` slide rendering — show visual above the lecture HTML
-- [ ] Verify on a real lesson with each simple layout type
+- [x] `components/VisualDiagram.tsx` skeleton with theme map (10 types × color)
+- [x] Layout dispatcher that branches by `visual.type`
+- [x] `layoutLayers` — vertical stack
+- [x] `layoutCycle` — circular arrangement
+- [x] `layoutTimeline` — horizontal line (covers `timeline` + `equation`)
+- [x] `layoutGrid` — rows × cols (covers `matrix` + `comparison` with 2 cols; also temporary fallback for `flow`/`tree`/`network`/`storymap` until Phase 8.2)
+- [x] Node renderers: `DefaultNode`, `LayerNode`, `CycleNode` (3 styles cover all types)
+- [x] Theme tokens: per-type hex / highlight border / highlight bg / default bg / canvas bg
+- [x] Edge renderer: Expo Go-safe native `View` connectors + endpoint dots + dashed/solid/thick styles + bounding-box clipping
+- [x] Wire into `app/lesson/[pdfId]/[lessonIndex].tsx` slide rendering — visual sits between thesis and lecture HTML
+- [ ] Verify on a real lesson with each simple layout type (manual QA next time we open a slide that has each shape)
 
 #### Phase 8.2 — Read-mode rendering, hierarchical layouts
 
-- [ ] Dagre integration helper (`dagreLayout(nodes, edges, direction)`)
-- [ ] Wire `flow` → dagre LR
-- [ ] Wire `tree` → dagre TB
-- [ ] Wire `network` → dagre + larger node spacing
-- [ ] Wire `storymap` → dagre LR with wider nodes
-- [ ] Dot grid SVG background for `network` and `flow` only
+- [x] Dagre integration helper (`dagreLayout(nodes, edges, direction)`)
+- [x] Wire `flow` → dagre LR/TB from visual orientation
+- [x] Wire `tree` → dagre TB
+- [x] Wire `network` → dagre + larger node spacing
+- [x] Wire `storymap` → dagre LR with wider nodes
+- [x] Soft dot-grid-style background for `network` and `flow` only
 - [ ] Per-type visual flourish (e.g. layer color bands, cycle pill shape)
 - [ ] Test on a real lesson with each hierarchical layout type
 
 #### Phase 8.3 — Pan / zoom container
 
 - [ ] Pinch-to-zoom using `react-native-gesture-handler` `PinchGestureHandler`
-- [ ] Single-finger pan when zoomed
-- [ ] Clamp zoom to 0.5× – 3×
+- [x] Single-finger pan via nested horizontal/vertical `ScrollView`s
+- [x] Clamp zoom to 0.2× – 3× so wide/tall mobile diagrams can truly fit
+- [x] Button zoom controls: Zoom out / Fit / Zoom in
 - [ ] Double-tap to reset to fit-to-screen
-- [ ] Fit-to-screen on initial mount (compute bounding box of node positions)
+- [x] Fit-to-screen on initial mount (compute bounding box of node positions against width + height)
 - [ ] Smooth Reanimated spring on zoom reset
 
 #### Phase 8.4 — Interactions
 
-- [ ] Tap-to-highlight a single node (toggle state, theme highlight ring)
-- [ ] Auto-walkthrough animation: cascade highlight along `visual.interaction.highlightSequence`
-- [ ] Walkthrough controls: Play / Pause / Skip / Reset (mirror web layout)
-- [ ] Auto-step delay = 700ms, manual-step delay = 2000ms (match web constants)
+- [x] Tap-to-highlight a single node (toggle state, theme highlight ring)
+- [x] Auto-walkthrough animation: cascade highlight along `visual.interaction.highlightSequence`
+- [x] Walkthrough controls: Play / Pause / Skip / Reset (mirror web layout)
+- [x] Auto-step delay = 700ms
 - [ ] Entrance stagger animation on mount (40ms × node index, cap 480ms total)
-- [ ] Haptic tick on each highlight change
+- [x] Haptic tick on each highlight change
 
 #### Phase 8.5 — Build Mode
 
-- [ ] "Build Mode" toggle on the slide — only shown when `isBuildModeEligible(visual)`
-- [ ] Anchor selection on enter — call `pickAnchorIds(visual)` and pre-place those nodes
-- [ ] Empty slot scaffolds with role label (Layer N / Phase N / Slot N) + group hint
-- [ ] Card bank below the diagram (unplaced node labels as draggable chips)
-- [ ] Tap-to-place: tap a card, tap a slot — place if `cardId === slotId`, shake if wrong
-- [ ] Snap-into-place animation when correct (Reanimated spring)
-- [ ] Shake animation when wrong (sequence: -8px → +8px → -4px → 0)
-- [ ] Hint button — reveal the next anchor; costs XP
-- [ ] Completion celebration when every slot filled correctly (re-use `Confetti`)
+- [x] "Build Mode" toggle on the slide — only shown when `isBuildModeEligible(visual)`
+- [x] Anchor selection on enter — call `pickAnchorIds(visual)`, pre-place those nodes, and badge them as Anchor clues
+- [x] Empty slot scaffolds with role label (Layer N / Phase N / Slot N), ghost icon, and group hint
+- [x] Shuffled card bank below the diagram (unplaced node labels + icons + groups as tappable chips)
+- [x] Tap-to-test: tap a card against the highlighted slot, or select a card and tap the slot — place if `cardId === slotId`, shake if wrong
+- [x] Learning clues: active-slot description, anchor relation hints, selected-card feedback, and escalating wrong-attempt hints
+- [x] Snap-into-place feedback when correct (plain transform, Expo Go-safe)
+- [x] Shake feedback when wrong (plain transform, Expo Go-safe)
+- [x] Hint button — reveal the active slot when stuck
+- [x] Completion celebration when every slot filled correctly (static confetti, Expo Go-safe)
 - [ ] Backend telemetry: `build_mode_complete` and `build_mode_hint` → POST `/api/events/build-mode`
 
 #### Phase 8.6 — Reporting + alternative interactions
@@ -596,3 +728,67 @@ Phase 0 finishing kit, in this order:
 
 Then **Phase 1, screen 1: Home tab redesign** — that's where the "Upload PDF"
 moment lives, and it's the single most important screen in the app.
+
+---
+
+## Outstanding work — do not overlook
+
+> One place that lists everything still open across all phases, in rough
+> "lowest cost first" order. Anything checked here is fully shipped. Anything
+> unchecked must end up either done or explicitly cut before we submit to
+> stores. Detailed checklists live under each phase above; this is the index.
+
+### Quick wins (≤1 session each)
+
+- [ ] **Phase 7.6 — Report inaccurate buttons** — flag icon on section / flashcard / question + bottom-sheet form. Endpoint exists.
+- [ ] **Phase 7.6 — "Explain this differently" chip** — under lecture HTML on each slide. Endpoint exists.
+- [ ] **Phase 7.6 — expo-image swap** — drop-in replacement for `<Image>`. ~30 min.
+- [ ] **Phase 7.6 — Real-fixes bug sweep** — one walkthrough of every flow, batched fixes.
+
+### Lesson surface — bigger lifts
+
+- [ ] **Phase 8 — Visual rendering engine** (whole phase, 8.0 → 8.6). Native rebuild of `visual-diagram.tsx` with Expo Go-safe React Native views. Multi-session: foundation → simple layouts → dagre hierarchical → pan/zoom → walkthrough → Build Mode → polish.
+
+### Push notifications (Phase 7)
+
+- [ ] **Expo Push registration** — request permission at a value moment, persist token server-side, handle logout / opt-out / reinstall / rotation, deep-link routing on tap
+- [ ] **Push preferences** in Profile — learning / social / account toggles + quiet hours
+- [ ] **Push trigger pack v1** — daily drill, streak at risk, weak-concept queue, next-session unlock, 1v1 challenge alerts, hive alerts, league summary, account alerts
+- [ ] **Push guardrails** — max 1 learning nudge / day, batch social alerts, suppress when user was just active, every push deep-links to one useful destination
+
+### Deep linking (Phase 7.7)
+
+- [ ] **iOS Universal Links** — host AASA on chattatutor.com, add associatedDomains, EAS rebuild, real-device test
+- [ ] **Android App Links** — host assetlinks.json, add intentFilters with autoVerify, EAS rebuild, real-device test
+- [ ] **Buffer 24h** for Apple CDN propagation; reinstall to re-verify Android
+
+### Voice (Phase 7.5)
+
+- [ ] Verify Android audio focus / interruption handling on a real device
+- [ ] Telemetry events when an analytics provider is wired
+
+### Performance + infra
+
+- [ ] **MMKV** swap for AsyncStorage on the hot read paths (auth token, voice prefs, lesson progress cache)
+- [ ] **Sentry** error reporting — same project as web, with mobile-tagged events
+- [ ] **PostHog** parity with web — identify on sign-in, capture key funnel events
+- [ ] **Bundle size audit** before submit — `npx expo-bundle-analyzer`
+
+### Monetization (Phase 6)
+
+- [ ] **iOS subscriptions** — decision still open between StoreKit IAP, Android+web only, or "manage on chattatutor.com" link. Resolve before submit.
+
+### Store submission (Phase 7 tail)
+
+- [ ] **App Store** metadata, screenshots (6.5" + 5.5"), privacy nutrition label
+- [ ] **Play Store** metadata, screenshots, content rating questionnaire
+- [ ] **EAS Submit** dry run on both stores
+- [ ] **App Privacy** disclosures matching what we actually collect
+- [ ] **Test plan** — TestFlight build + Play internal track before public release
+
+### Known content gaps to fill or cut
+
+- [ ] Decide on **community feed posting** — read-only for now, but if we keep the tab we should support replies + reactions at minimum
+- [ ] **Hive challenge leaderboards** — endpoint exists, no mobile surface
+- [ ] **Boss quiz** — exists; QA on a real completed course
+- [ ] **Decay quiz** flow — exists on backend, no mobile entry point

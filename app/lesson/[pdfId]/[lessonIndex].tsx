@@ -35,6 +35,7 @@ import {
   ListChecks,
   Lock,
   MessageSquare,
+  Puzzle,
   Send,
   Sparkles,
   Zap,
@@ -45,6 +46,7 @@ import { getAuthTokenSync, loadAuthToken } from "@/lib/auth-helpers";
 import { LectureAudioPlayer } from "@/components/LectureAudioPlayer";
 import { RichContent } from "@/components/RichContent";
 import { Skeleton } from "@/components/Skeleton";
+import { VisualDiagram } from "@/components/VisualDiagram";
 import {
   chatWithAI,
   getLesson,
@@ -60,6 +62,7 @@ import {
   markLectureCompleted as markLectureCachedComplete,
 } from "@/lib/lesson-progress";
 import { useToast } from "@/lib/toast";
+import { isBuildModeEligible } from "@/lib/visual-eligibility";
 
 type LessonTab = "lecture" | "quiz" | "chat" | "book";
 type SectionAck = "correct" | "missed" | "skipped";
@@ -85,6 +88,31 @@ function hasSoftLock(section: LearningSection | undefined): boolean {
   const q = section.retrievalCheck?.question?.trim();
   const a = section.retrievalCheck?.answer?.trim();
   return Boolean(q && a && !section.retrievalCheckSuppressed);
+}
+
+class VisualSlotBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+          <Text className="text-xs font-semibold text-slate-500">
+            Diagram unavailable for this slide
+          </Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 // ───── Slide ────────────────────────────────────────────────────────────────
@@ -117,6 +145,15 @@ function Slide({
   const html = getSlideHtml(lesson, index);
   const softLock = hasSoftLock(section);
   const ackPending = softLock && isFrontier && ack === undefined;
+  const visual = lesson.visuals?.[index] ?? null;
+  const hasVisualSlot = Array.isArray(lesson.visuals) && index < lesson.visuals.length;
+  const buildModeEligible = isBuildModeEligible(visual);
+  const visualNodeCount = Array.isArray(visual?.nodes) ? visual.nodes.length : 0;
+  const [diagramBuildMode, setDiagramBuildMode] = useState(false);
+
+  useEffect(() => {
+    setDiagramBuildMode(false);
+  }, [index, visual?.type, visualNodeCount]);
 
   return (
     <View style={{ width, paddingHorizontal: SLIDE_HORIZONTAL_PADDING }}>
@@ -154,6 +191,49 @@ function Slide({
                   You'll learn:{" "}
                 </Text>
                 {section.learningObjective}
+              </Text>
+            </View>
+          ) : null}
+
+          {visual ? (
+            <View className="mb-4">
+              <View className="mb-2 flex-row items-center justify-between gap-3">
+                <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Diagram
+                </Text>
+                {buildModeEligible ? (
+                  <Pressable
+                    onPress={() => {
+                      haptics.tap();
+                      setDiagramBuildMode((current) => !current);
+                    }}
+                    className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:opacity-90 ${
+                      diagramBuildMode ? "bg-slate-900" : "bg-indigo-50"
+                    }`}
+                  >
+                    <Puzzle size={12} color={diagramBuildMode ? "#ffffff" : "#4f46e5"} />
+                    <Text
+                      className={`text-[11px] font-bold ${
+                        diagramBuildMode ? "text-white" : "text-indigo-700"
+                      }`}
+                    >
+                      {diagramBuildMode ? "Exit Build" : "Build"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <VisualSlotBoundary key={`visual-${index}-${visual?.type ?? "unknown"}-${visualNodeCount}`}>
+                <VisualDiagram
+                  visual={visual}
+                  conceptType={lesson.conceptTypes?.[index] ?? null}
+                  buildMode={diagramBuildMode}
+                />
+              </VisualSlotBoundary>
+            </View>
+          ) : hasVisualSlot ? (
+            <View className="mb-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+              <Text className="text-xs font-semibold text-slate-500">
+                Diagram unavailable for this slide
               </Text>
             </View>
           ) : null}

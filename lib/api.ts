@@ -99,7 +99,8 @@ export interface Lesson {
   };
   flashcards?: LessonFlashcard[];
   quizQuestions?: LessonQuizQuestion[];
-  visuals?: unknown[];
+  visuals?: (VisualSpec | null)[];
+  conceptTypes?: (ConceptType | null)[];
   sections?: LearningSection[];
 }
 

@@ -1,7 +1,7 @@
 import "../global.css";
+import "@/lib/suppress-render-html-warnings";
 
 import React, { useEffect } from "react";
-import { LogBox } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -10,14 +10,6 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ToastProvider, useToast } from "@/lib/toast";
 import { onUnauthorized } from "@/lib/fetch";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-
-// react-native-render-html v6 still uses React's deprecated `defaultProps`
-// pattern on TNodeChildrenRenderer / TRenderEngineProvider. v7 is in alpha
-// with breaking API changes, so we suppress the specific warning instead of
-// chasing an upstream fix on every render. Drop this once we migrate off v6.
-LogBox.ignoreLogs([
-  /Support for defaultProps will be removed from function components/,
-]);
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore: hideAsync runs on first render below
