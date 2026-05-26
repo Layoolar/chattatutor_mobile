@@ -25,10 +25,31 @@ export interface UserActivity {
   rivalEvents: unknown[];
 }
 
+export interface DecayingLessonRow {
+  pdfId: string;
+  lessonIndex: number;
+  title: string;
+  currentMastery: number;
+  daysSinceLastReview: number;
+}
+
 export interface UserRank {
-  totalMastery: number;
+  // Knowmad Level fields — drive the title and "X mastery to next" UI.
+  level?: number;
   title: string;
   nextTitle: string | null;
+  lifetimeMastery?: number;
+  masteryToNext?: number | null;
+  // Current knowledge mastery — drives the decay surface, NOT the title.
+  currentKnowledgeMastery?: number;
+  // Weekly mastery — for the league delta row on the rank card.
+  weekly?: {
+    earned: number;
+  };
+  // Top lessons due for refresh — frontend deep-links each to its lesson page.
+  decayingLessons?: DecayingLessonRow[];
+  // Backwards-compatible aliases (pre-Phase-6.5 readers).
+  totalMastery: number;
   pointsToNext: number | null;
 }
 
@@ -1073,7 +1094,11 @@ export async function getFlashcards(
 export async function getQuizQuestions(
   pdfId: string,
   lessonIndex: number,
-): Promise<{ quizQuestions: QuizQuestion[]; personalBest: { score: number } | null }> {
+): Promise<{
+  quizQuestions: QuizQuestion[];
+  personalBest: { score: number } | null;
+  alreadyCleared: boolean;
+}> {
   const response = await apiFetch(
     `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/quiz`,
   );
@@ -1086,6 +1111,7 @@ export async function getQuizQuestions(
   const data = (await response.json()) as {
     quizQuestions?: LessonQuizQuestion[];
     personalBest?: { score: number } | null;
+    alreadyCleared?: boolean;
   };
 
   return {
@@ -1096,7 +1122,16 @@ export async function getQuizQuestions(
       data.personalBest && typeof data.personalBest.score === "number"
         ? { score: data.personalBest.score }
         : null,
+    alreadyCleared: !!data.alreadyCleared,
   };
+}
+
+export class QuizAlreadyClearedError extends Error {
+  code = "ALREADY_CLEARED_TODAY" as const;
+  constructor() {
+    super("Lesson already cleared today. Come back tomorrow for a fresh attempt.");
+    this.name = "QuizAlreadyClearedError";
+  }
 }
 
 export async function submitQuiz(
@@ -1111,6 +1146,10 @@ export async function submitQuiz(
       body: JSON.stringify({ answers }),
     },
   );
+
+  if (response.status === 423) {
+    throw new QuizAlreadyClearedError();
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));

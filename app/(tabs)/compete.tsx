@@ -317,20 +317,20 @@ export default function CompeteScreen() {
               </GradientIcon>
               <View className="flex-1">
                 <Text className="text-xs uppercase tracking-wider font-semibold text-white/60">
-                  Current rank
+                  Knowmad Level{typeof rank?.level === "number" ? ` ${rank.level}` : ""}
                 </Text>
                 <Text className="text-2xl font-extrabold text-white mt-1" numberOfLines={1}>
                   {rank?.title ?? "Unranked"}
                 </Text>
                 <Text className="text-sm text-white/70 mt-1">
-                  {rank?.totalMastery ?? 0} mastery · {stampCount} passport{" "}
-                  {stampCount === 1 ? "stamp" : "stamps"}
+                  {(rank?.lifetimeMastery ?? rank?.totalMastery ?? 0).toLocaleString()} lifetime mastery · {stampCount}{" "}
+                  passport {stampCount === 1 ? "stamp" : "stamps"}
                 </Text>
               </View>
             </View>
-            {rank?.nextTitle && rank.pointsToNext != null && rank.pointsToNext > 0 ? (
+            {rank?.nextTitle && (rank.masteryToNext ?? rank.pointsToNext) != null && (rank.masteryToNext ?? rank.pointsToNext ?? 0) > 0 ? (
               <Text className="text-xs text-white/60 mt-3">
-                {rank.pointsToNext} mastery to {rank.nextTitle}
+                {(rank.masteryToNext ?? rank.pointsToNext)?.toLocaleString()} mastery to {rank.nextTitle}
               </Text>
             ) : null}
 

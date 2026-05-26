@@ -25,6 +25,7 @@ import { Confetti } from "@/components/Confetti";
 import { Skeleton } from "@/components/Skeleton";
 import {
   QUIZ_PASS_MARK,
+  QuizAlreadyClearedError,
   getStudyPlan,
   getQuizQuestions,
   submitQuiz,
@@ -136,6 +137,9 @@ export default function LessonQuizScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<QuizSubmissionResult | null>(null);
   const [totalLessons, setTotalLessons] = useState<number | null>(null);
+  // Phase 6.5: once the user passes this lesson's quiz today, the backend
+  // refuses fresh attempts until tomorrow. Surface a clean "cleared" state.
+  const [alreadyCleared, setAlreadyCleared] = useState(false);
 
   const progress = useSharedValue(0);
   const questionEntry = useSharedValue(1);
@@ -161,6 +165,7 @@ export default function LessonQuizScreen() {
         setAnswers(quizData.quizQuestions.map(() => null));
         setPersonalBest(quizData.personalBest?.score ?? null);
         setTotalLessons(planData.totalDays ?? planData.lessons?.length ?? 0);
+        setAlreadyCleared(!!quizData.alreadyCleared);
       } catch (err) {
         if (!isMounted) return;
         toast.error(err instanceof Error ? err.message : "Couldn't load quiz");
@@ -311,8 +316,16 @@ export default function LessonQuizScreen() {
       );
       setResult(submission);
     } catch (err) {
-      haptics.error();
-      toast.error(err instanceof Error ? err.message : "Couldn't submit quiz");
+      // Phase 6.5: backend may return 423 if the user already passed today.
+      // Flip into the cleared state instead of showing a generic error.
+      if (err instanceof QuizAlreadyClearedError) {
+        setAlreadyCleared(true);
+        haptics.warning();
+        toast.info("Lesson already cleared today — come back tomorrow for a fresh attempt.");
+      } else {
+        haptics.error();
+        toast.error(err instanceof Error ? err.message : "Couldn't submit quiz");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -582,6 +595,63 @@ export default function LessonQuizScreen() {
               </View>
             </View>
           </Animated.View>
+        ) : alreadyCleared && !result ? (
+          <View
+            className="overflow-hidden rounded-3xl bg-slate-900 px-5 py-6 gap-4"
+            style={{
+              shadowColor: "#312e81",
+              shadowOpacity: 0.18,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 5,
+            }}
+          >
+            <View
+              pointerEvents="none"
+              className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-emerald-500/25"
+            />
+            <View className="flex-row items-start gap-4">
+              <View className="h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/20">
+                <CheckCircle2 size={28} color="#10b981" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-emerald-200">
+                  Cleared today
+                </Text>
+                <Text className="mt-2 text-2xl font-extrabold text-white">
+                  You aced this one
+                </Text>
+                <Text className="mt-2 text-sm leading-6 text-white/75">
+                  Quizzes reload daily so retention sticks. A fresh attempt
+                  unlocks tomorrow.
+                  {personalBest != null ? ` Your best: ${personalBest}%.` : ""}
+                </Text>
+              </View>
+            </View>
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={() =>
+                  router.replace({
+                    pathname: "/course/[pdfId]",
+                    params: { pdfId: String(pdfId) },
+                  })
+                }
+                className="flex-1 h-11 flex-row items-center justify-center gap-2 rounded-full bg-white active:opacity-90"
+              >
+                <ListChecks size={16} color="#0f172a" />
+                <Text className="text-sm font-semibold text-slate-900">Back to course</Text>
+              </Pressable>
+              {hasNextLesson ? (
+                <Pressable
+                  onPress={openNextLesson}
+                  className="flex-1 h-11 flex-row items-center justify-center gap-2 rounded-full border border-white/20 active:bg-white/10"
+                >
+                  <ArrowRight size={16} color="#ffffff" />
+                  <Text className="text-sm font-semibold text-white">Next session</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
         ) : questions.length === 0 ? (
           <View className="rounded-3xl border border-slate-200 bg-white px-5 py-6 gap-3">
             <Text className="text-lg font-bold text-slate-900">No quiz yet</Text>
