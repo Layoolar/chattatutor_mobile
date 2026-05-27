@@ -16,6 +16,7 @@ import { GradientIcon } from "@/components/GradientIcon";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/lib/toast";
+import { celebrateLevelUp } from "@/lib/celebrate";
 import {
   getDailyDrill,
   gradeDrillQuestion,
@@ -103,6 +104,10 @@ export default function DailyDrillScreen() {
         ...prev,
         { questionId: current.id, selectedIndex: selected, result },
       ]);
+
+      // Phase 6.5: celebrate if this correct answer pushed the user across a
+      // Knowmad Level threshold.
+      celebrateLevelUp(result.mastery, toast);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't grade answer");
     } finally {

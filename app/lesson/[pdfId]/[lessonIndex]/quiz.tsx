@@ -36,6 +36,7 @@ import {
 import { haptics } from "@/lib/haptics";
 import { sfx } from "@/lib/sfx";
 import { useToast } from "@/lib/toast";
+import { celebrateLevelUp } from "@/lib/celebrate";
 
 type QuizAnswer = number | null;
 
@@ -315,6 +316,8 @@ export default function LessonQuizScreen() {
         answers.map((answer) => ({ selectedIndex: answer ?? -1 })),
       );
       setResult(submission);
+      // Phase 6.5: celebrate if the lesson-clear bonus crossed a Knowmad tier.
+      celebrateLevelUp(submission.mastery, toast);
     } catch (err) {
       // Phase 6.5: backend may return 423 if the user already passed today.
       // Flip into the cleared state instead of showing a generic error.

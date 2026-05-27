@@ -406,82 +406,43 @@ A fresh lesson cleared (lecture + quiz pass) = **700** total. Bigger than a max 
 
 ---
 
-#### Backend — checklist
+#### Backend — checklist ✅ DONE (except title-up loot)
 
-- [ ] Add `lifetimeMasteryEarned: number` field to `User` (Prisma schema + migration)
-- [ ] Add `awardedQuestionIds: string[]` field to `User` (or a separate `UserQuestionAward` table if Set semantics are easier with rows)
-- [ ] One-time data migration: `lifetimeMasteryEarned = sum(masteryScores across all user study plans)` so existing users don't reset to Initiate
-- [ ] New constant `KNOWMAD_LEVELS` (10-tier ladder above) in `constants.ts` — replaces `KNOWMAD_LEVELS` (XP-based) and `RANKS` (4-tier mastery-based)
-- [ ] New helper `creditMastery(userId, amount, questionId?)` in `activityService.ts`:
-  - [ ] Increments `weeklyMasteryEarned` and `lifetimeMasteryEarned` atomically
-  - [ ] If `questionId` provided: short-circuit if already in `awardedQuestionIds`, otherwise add to set
-  - [ ] Returns `{ awarded: amount, lifetime, leveledUp, newTitle }`
-- [ ] New constant values in `constants.ts`:
-  - [ ] `LESSON_COMPLETE_WEEKLY_MASTERY = 600`
-  - [ ] `LECTURE_COMPLETION_WEEKLY_MASTERY = 100` (unchanged)
-  - [ ] `DAILY_DRILL_CORRECT_WEEKLY_MASTERY = 100` (bumped from 20)
-  - [ ] `ECHO_CORRECT_WEEKLY_MASTERY = 250`
-- [ ] **Handler fixes**:
-  - [ ] `gradeDrillQuestionHandler` — on correct: `creditMastery(userId, 100, questionId)`, `recordUserActivityAndAwardStreaks(userId)`. On any attempt: activity stamp.
-  - [ ] `answerEchoHandler` — on correct: `creditMastery(userId, 250, questionId)`, `recordUserActivityAndAwardStreaks(userId)`. On any attempt: activity stamp.
-  - [ ] `submitQuizHandler` — on pass: existing per-lesson mastery scoring + `creditMastery(userId, 600, ...)` for the lesson-clear bonus (only if first pass today). On any submit: activity stamp.
-- [ ] **Quiz once-per-day rule**:
-  - [ ] Add `lastPassedAt: ISO` to `Progress` record
-  - [ ] On `getQuizQuestions`: if `lastPassedAt` is today, return existing cached questions with `alreadyCleared: true` flag
-  - [ ] On failed attempts: serve same question set (don't regenerate); next-day regeneration only
-  - [ ] Cache the daily question set on the progress record (so failed retake = same Qs)
-- [ ] **Streak milestone XP → mastery**:
-  - [ ] `checkStreakXp` now grants weekly+lifetime mastery instead of XP (30 / 50 / 100 for 3/7/30-day)
-- [ ] **Strip the parallel XP system**:
-  - [ ] Remove all `awardXp(...)` calls — replace with `creditMastery(...)` where appropriate
-  - [ ] `XP_REWARDS` constant: keep as historical reference for one release, delete next release
-  - [ ] `/users/knowmad` route → either 410 Gone or repointed to return data from the new ladder shape
-  - [ ] `KnowmadProfile` type can stay, fields update to `{ level, title, lifetimeMastery, nextTitle, masteryToNext }`
-- [ ] **New `/users/rank` response shape**:
-  ```json
-  {
-    "level": 4,
-    "title": "Pathfinder",
-    "nextTitle": "Sage",
-    "lifetimeMastery": 18420,
-    "masteryToNext": 6580,
-    "currentKnowledgeMastery": 4120,    // = totalMastery (current state)
-    "weekly": {
-      "earned": 1820,
-      "decayed": 45,
-      "net": 1775,
-      "leagueRank": 6
-    },
-    "decayedLessons": [
-      { "pdfId": "...", "lessonIndex": 2, "title": "Quantum Tunneling", "decayAmount": 22, "lastReviewedAt": "..." }
-    ]
-  }
-  ```
-- [ ] **Title-up milestone**: when `creditMastery` crosses a threshold, write a `KnowmadMilestone` row + grant an insight token / loot drop (re-use existing `setUserLoot` plumbing)
+- [x] Add `lifetimeMasteryEarned: number` field to `User` (Prisma schema + migration)
+- [x] Add `awardedQuestionIds: string[]` field to `User`
+- [x] One-time data migration: backfills `lifetimeMasteryEarned = knowmadXp` so existing users keep their journey (migration `20260526120000_phase_65_rank_unification`). **Migration file written — still needs `prisma migrate deploy` against the DB.**
+- [x] New constant `KNOWMAD_LEVELS` (10-tier, mastery-based) in `constants.ts` + `getKnowmadLevelForMastery` helper — replaces old XP ladder and 4-tier `RANKS`
+- [x] New helper `creditMastery(userId, amount, questionId?)` in `activityService.ts`:
+  - [x] Increments `weeklyMasteryEarned` and `lifetimeMasteryEarned`, normalized to one floored delta
+  - [x] Atomic `tryClaimQuestionAward` gate (race-safe — single conditional `updateMany`)
+  - [x] Returns `{ awarded, lifetime, leveledUp, newLevel, newTitle }`
+- [x] New constant values: `LESSON_COMPLETE_WEEKLY_MASTERY = 600`, `LECTURE_COMPLETION_WEEKLY_MASTERY = 100`, `DAILY_DRILL_CORRECT_WEEKLY_MASTERY = 100`, `ECHO_CORRECT_WEEKLY_MASTERY = 250`, `BOSS_QUIZ_MULTIPLIER = 2`, streak milestones
+- [x] **Handler fixes**: drill, echo, quiz-pass lesson bonus, lecture-complete, boss quiz, decay quiz all route through `creditMastery` + stamp activity on every attempt
+- [x] **Quiz once-per-day rule**: `lastPassedAt` + `dailyQuestionSnapshot` on `LessonProgress`; `getLessonQuizHandler` returns `alreadyCleared`; `submitQuizHandler` 423s after a same-day pass; failed retakes get the cached question set
+- [x] **Streak milestone XP → mastery**: `checkStreakXp` → `awardXp` → mastery (no longer writes `knowmadXp`)
+- [x] **Strip the parallel XP system**: `awardXp` rewritten to write mastery directly; `knowmadXp` column no longer written; `/users/knowmad` + leaderboards repointed at `lifetimeMasteryEarned`
+- [x] **New `/users/rank` response shape**: returns `level`, `title`, `nextTitle`, `lifetimeMastery`, `masteryToNext`, `currentKnowledgeMastery`, `weekly.earned`, `decayingLessons[]` (+ back-compat `totalMastery`/`pointsToNext` aliases). NOTE: shipped shape uses `weekly.earned` + `decayingLessons` (days-since-review based) rather than the spec's `decayed/net/leagueRank` — current backend mastery doesn't numerically decay, so we surface staleness instead.
+- [x] **Title-up milestone**: `creditMastery` grants a double-XP token via `setUserLoot` on level-up (reused existing loot plumbing). `submitQuiz` now awaits + returns its `mastery` credit so the quiz can celebrate too.
 
-#### Mobile — checklist
+#### Mobile — checklist ✅ DONE
 
-- [ ] Update `UserRank` type in `lib/api.ts` to the new shape (above)
-- [ ] Update `getUserRank` consumer expectations (Home, Compete, Profile, `RankProgressCard`)
-- [ ] Rename UI strings everywhere: `"Total mastery"` → `"Knowmad Level"`, `"X mastery"` → `"X Knowmad pts"` (or similar — final copy TBD)
-- [ ] Update `RankProgressCard` to:
-  - [ ] Show the new 10-tier title
-  - [ ] Render the `weekly: { earned, decayed, net }` delta row below the title
-  - [ ] Render the `decayedLessons` panel with one-tap deep-link to lesson refresh
-- [ ] Compete page tile: show `currentKnowledgeMastery` separately from `lifetimeMastery` so both are visible without confusion
-- [ ] Quiz screen: when `alreadyCleared` is set, show "Cleared today — back tomorrow" empty state, hide Submit
-- [ ] Title-up celebration: confetti + toast + insight-token notice when `leveledUp` is true in any mastery-credit response
-- [ ] Out of scope: redesigning the passport screen (it stays per-course tier — Platinum/Gold/Silver/Bronze)
+- [x] Update `UserRank` type in `lib/api.ts` to the new shape (+ `DecayingLessonRow`, `MasteryCredit`)
+- [x] Update `getUserRank` consumers (Home/Profile via `RankProgressCard`; Compete tile inline)
+- [x] UI strings renamed to "Knowmad Level" / "lifetime mastery"
+- [x] `RankProgressCard`: 10-tier title (from `rank.level`, no string lookup), weekly `+earned this week` row, decay panel with one-tap deep-link to lesson refresh
+- [x] Compete tile shows lifetime mastery + masteryToNext
+- [x] Quiz screen: `alreadyCleared` empty state + 423 handling, hides Submit
+- [x] Title-up celebration: `lib/celebrate.ts` (haptic + sfx + toast) wired into drill, echo, and quiz on `mastery.leveledUp`
+- [x] Out of scope: passport screen stays per-course tier
 
-#### Web — checklist
+#### Web — checklist ✅ DONE
 
-- [ ] Same UI string swap: `"Total mastery"` → `"Knowmad Level"`
-- [ ] Update home / dashboard rank cards to consume new `/users/rank` shape
-- [ ] Replace `KnowmadRankBadge` with a `MasteryTierBadge` reading the new 10-tier ladder (keep visual style, swap data source)
-- [ ] Hive detail page (`teams/[teamId]`):
-  - [ ] Replace "Knowmad XP" tab with a "Knowmad Level" tab showing member level + lifetime mastery
-  - [ ] Drop the global Knowmad XP leaderboard route (or repoint at lifetime mastery)
-- [ ] Decay panel: add the same "lessons fading" surface to dashboard so web users see it too
+- [x] UI strings "Knowmad XP" → "Knowmad Level" (hive tab, column header, leave-hive copy)
+- [x] Dashboard rank card consumes new shape; progress derived from `rank.level` (no `indexOf` NaN risk), unit label restored, thresholds hoisted to module scope
+- [x] `UserRank` type updated in web `lib/api.ts` (+ `DecayingLessonRow`, back-compat aliases)
+- [x] `KnowmadRankBadge` already on the 10-tier ladder (Initiate → Grandmaster); badge art for Pioneer/Luminary falls back to Grandmaster SVG until bespoke art ships
+- [x] Hive detail Knowmad Level tab renders member `level` + lifetime mastery via the new endpoint shape
+- [ ] Decay panel on web dashboard — deferred (mobile has it; web can pull `decayingLessons` from the same `/users/rank` response in a follow-up)
 
 #### Out of scope for Phase 6.5
 

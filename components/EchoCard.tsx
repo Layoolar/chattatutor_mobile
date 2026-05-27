@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import { GradientIcon } from "@/components/GradientIcon";
 import { useToast } from "@/lib/toast";
 import { answerEcho, getEcho, type EchoQuestion } from "@/lib/api";
+import { celebrateLevelUp } from "@/lib/celebrate";
 import { markFeatureDiscovered } from "@/lib/feature-discovery";
 
 interface EchoCardProps {
@@ -69,6 +70,7 @@ export function EchoCard({ refreshToken }: EchoCardProps) {
         correctIndex: result.correctIndex,
         correct: result.correct,
       });
+      celebrateLevelUp(result.mastery, toast);
       void markFeatureDiscovered("lesson-echo");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't grade echo");

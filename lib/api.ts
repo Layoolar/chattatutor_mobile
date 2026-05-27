@@ -33,6 +33,17 @@ export interface DecayingLessonRow {
   daysSinceLastReview: number;
 }
 
+// Phase 6.5: returned by mastery-awarding endpoints (drill / echo / quiz) so
+// the client can fire a Knowmad Level-up celebration. `awarded` is 0 when the
+// question already paid out (anti-farming) or no credit was due.
+export interface MasteryCredit {
+  awarded: number;
+  lifetime: number;
+  leveledUp: boolean;
+  newLevel?: number;
+  newTitle?: string;
+}
+
 export interface UserRank {
   // Knowmad Level fields — drive the title and "X mastery to next" UI.
   level?: number;
@@ -217,6 +228,8 @@ export interface QuizSubmissionResult {
   progress: LessonProgress;
   bossQuestion?: BossQuestion | null;
   personalizedHook?: string | null;
+  // Phase 6.5: present on the first lesson pass of the day (the 600-pt bonus).
+  mastery?: MasteryCredit;
 }
 
 export interface BossQuizQuestion {
@@ -1805,6 +1818,7 @@ export interface DrillGradeResult {
   correct: boolean;
   correctIndex: number;
   correctOption: string;
+  mastery?: MasteryCredit;
 }
 
 export async function getDailyDrill(): Promise<{
@@ -1943,7 +1957,7 @@ export async function answerEcho(
   lessonIndex: number,
   questionId: string,
   selectedIndex: number,
-): Promise<{ correct: boolean; correctIndex: number; correctOption: string }> {
+): Promise<{ correct: boolean; correctIndex: number; correctOption: string; mastery?: MasteryCredit }> {
   const response = await apiFetch(`${API_URL}/users/echo/answer`, {
     method: "POST",
     body: JSON.stringify({ planId, pdfId, lessonIndex, questionId, selectedIndex }),
