@@ -344,8 +344,8 @@ Friction-y to build, retention multiplier.
 - [x] **Settings** — notifications, voice prefs, change password, theme (later), sign out
 - [x] **Token usage** detail with plan benefits
 - [x] **Pricing** as a bottom sheet (port `PricingModal`)
-- [ ] **Subscription** — Stripe sheet on Android/web, **see "Open decisions" for iOS**
-- [x] **Flutterwave** for NGN/USD non-iOS
+- [x] **Subscription** — all platforms redirect to `chattatutor.com/pricing?from=app` (web checkout; no in-app IAP v1)
+- [x] **Flutterwave** — checkout on web only from mobile (Profile → open browser)
 
 ### Phase 6.5 — Rank system unification + economy retune ✅ DONE (web hive Knowmad-XP tab rebuild deferred)
 
@@ -794,10 +794,11 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
 
 ## Open decisions (product, not engineering)
 
-1. **iOS payments.** App Store rejects native Stripe Checkout for digital goods.
-   Options: (a) StoreKit IAP + server reconciliation, (b) ship premium on
-   Android + web only, (c) "manage subscription on chattatutor.com" link — risky
-   but the path many apps use. Pick before Phase 6.
+1. **iOS payments — DECIDED (2026-05-28).** Manage billing on the web for all
+   platforms. Mobile opens `https://chattatutor.com/pricing?from=app` in the
+   system browser; web shows an **Open app** banner when `from=app`. Same pattern
+   for forgot-password, check-email, verify-email, and reset-password deep links
+   from the app. StoreKit IAP deferred.
 2. **Push provider.** Expo Push works out of the box; FCM/APNs direct gives more
    control and avoids the Expo proxy. Default to Expo Push for v1.
 3. **Offline strategy.** Read-only lesson cache (cheap, useful) vs full
@@ -808,6 +809,85 @@ Verify-email and reset-password emails currently link to `https://chattatutor.co
    `assetlinks.json` hosted there.
 5. **Analytics.** Port PostHog from frontend or ship without first?
    Recommendation: ship Phase 1 without; add in Phase 7.
+
+---
+
+## Web handoff — billing & account recovery (v1)
+
+> Small **backend** addition: optional `source: "mobile" | "web"` on auth mail
+> endpoints so email links include `from=app`. No new routes. Flutterwave/Stripe
+> unchanged; mobile billing still opens the marketing site in the browser.
+
+### How it works
+
+| User action in app | Where it happens |
+|---|---|
+| Forgot password (enter email) | **In the app** → `POST /auth/forgot-password` with `source: "mobile"` |
+| Signup / resend verification | **In the app** → signup or resend with `source: "mobile"` |
+| Tap link in auth email | **Browser** → `https://chattatutor.com/verify-email` or `/reset-password` with `token`, `email` (verify), and **`from=app`** |
+| Upgrade / manage subscription | **Browser** → `https://chattatutor.com/pricing?from=app` |
+
+Query flag: **`from=app`**. Added to auth emails when the client sends
+`source: "mobile"` on signup, forgot-password, or resend-verification (backend
+`buildAuthEmailUrl` in `emailService.ts`). The web app shows a manual **Open app**
+banner (`chattatutor://`) — no automatic app launch from the web. Checkout
+success/failure URLs preserve `from=app` when checkout started from pricing with the flag.
+
+### Mobile implementation
+
+- `lib/web-links.ts` — `buildWebAppUrl()`, `openWebAppFlow()` (system browser via `expo-web-browser`)
+- `lib/constants.ts` — `WEB_APP_BASE_URL` from `EXPO_PUBLIC_WEB_APP_URL` (default `https://chattatutor.com`)
+- `components/WebFlowRedirect.tsx` — if a verify/reset deep link opens the app, forward to web with `token` + `from=app`
+- **Still in-app:** login, signup, forgot-password, check-email (resend), Google sign-in, change password
+- `lib/auth.ts` — sends `source: "mobile"` on signup, forgot-password, resend-verification
+
+### Backend (`chattatutor_backend`)
+
+- `emailService.ts` — `buildAuthEmailUrl()`, `normalizeAuthEmailSource()`, optional `source` on send helpers
+- `authService.ts` / `authController.ts` — read `source` from body on signup, forgot-password, resend-verification (default web)
+
+### Web implementation (sibling repo `chattatutor_frontend`)
+
+- `lib/mobile-app-link.ts` — `isFromMobileApp()`, `subscriptionRedirectUrls()`, `MOBILE_APP_DEEP_LINK`
+- `components/open-in-app-banner.tsx` — banner on auth, pricing, subscription result pages
+- `components/pricing-plan-button.tsx` — passes `from=app` through Flutterwave redirect URLs
+
+### EAS / env
+
+Set on every non-local build profile:
+
+```bash
+EXPO_PUBLIC_WEB_APP_URL=https://chattatutor.com
+```
+
+(documented in `.env.example`)
+
+### App Store & Play Store copy (important)
+
+- Do **not** sell digital subscriptions inside the iOS app UI (no Stripe sheet, no IAP v1).
+- Profile / premium gates should say subscriptions are completed on **chattatutor.com**.
+- After web checkout, user returns to the app manually (banner + pull-to-refresh on Profile).
+
+### Email links vs app-initiated flows
+
+- **Mobile-triggered emails** include `from=app` (and `email` on verify links) via `source: "mobile"`.
+- **Web-triggered emails** omit `from=app` (default `source: "web"` or omitted).
+- Tapping the mail link opens the browser; user finishes verify/reset on web and taps **Open app** on the banner.
+- If a deep link opens the native verify/reset route, `WebFlowRedirect` forwards to the same web URL with `from=app`.
+- Universal Links (Phase 7.7) remain optional; banner-only return to app is the v1 UX.
+
+### What we are *not* doing in v1
+
+- StoreKit / Play Billing in-app purchase
+- In-app Flutterwave checkout (`createFlutterwaveCheckout` removed from Profile flow)
+- Separate `/auth/mobile/*` endpoints (use `source` on existing routes instead)
+
+### Quick test
+
+```bash
+# From mobile dev: tap Forgot password → browser should show ?from=app and the banner
+# After Profile → Upgrade on web → complete or cancel → subscription-success|failure?from=app
+```
 
 ---
 
@@ -899,7 +979,7 @@ moment lives, and it's the single most important screen in the app.
 
 ### Monetization (Phase 6)
 
-- [ ] **iOS subscriptions** — decision still open between StoreKit IAP, Android+web only, or "manage on chattatutor.com" link. Resolve before submit.
+- [x] **iOS subscriptions** — web billing via `?from=app` + Open app banner (see Open decisions #1)
 
 ### Rank system + economy (Phase 6.5)
 

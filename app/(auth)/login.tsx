@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Button } from "@/components/Button";
@@ -11,6 +11,7 @@ import { GoogleButton } from "@/components/GoogleButton";
 import { login } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useGoogleSignIn } from "@/lib/google-auth";
+import { Link } from "expo-router";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -28,7 +29,8 @@ export default function LoginScreen() {
     try {
       const res = await login(emailOrUsername.trim(), password);
       if (res.requiresVerification) {
-        router.replace({ pathname: "/(auth)/check-email", params: { email: emailOrUsername } });
+        const email = emailOrUsername.includes("@") ? emailOrUsername.trim() : "";
+        router.replace({ pathname: "/(auth)/check-email", params: { email } });
         return;
       }
       await refresh();
@@ -73,9 +75,9 @@ export default function LoginScreen() {
           <Text className="text-2xl font-bold text-slate-900">Sign in to your account</Text>
           <Text className="text-slate-600">
             Don't have an account?{" "}
-            <Link href="/(auth)/signup" className="text-indigo-600 font-semibold">
-              Sign up free
-            </Link>
+            <Pressable onPress={() => router.push("/(auth)/signup")}>
+              <Text className="text-indigo-600 font-semibold">Sign up free</Text>
+            </Pressable>
           </Text>
         </View>
 
@@ -93,8 +95,10 @@ export default function LoginScreen() {
           <View className="gap-2">
             <View className="flex-row items-center justify-between">
               <Text className="text-slate-900 font-medium">Password</Text>
-              <Link href="/(auth)/forgot-password" className="text-sm text-indigo-600 font-medium">
-                Forgot password?
+              <Link href="/(auth)/forgot-password" asChild>
+                <Pressable>
+                  <Text className="text-sm text-indigo-600 font-medium">Forgot password?</Text>
+                </Pressable>
               </Link>
             </View>
             <Input

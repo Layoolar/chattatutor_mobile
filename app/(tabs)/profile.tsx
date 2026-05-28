@@ -5,7 +5,6 @@ import type { ComponentType, ReactNode } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -14,7 +13,6 @@ import {
   Text,
   View,
 } from "react-native";
-import * as WebBrowser from "expo-web-browser";
 import {
   Bell,
   CalendarCheck,
@@ -42,8 +40,6 @@ import { useAuth } from "@/lib/auth-context";
 import { changePassword, updateUsername } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import {
-  cancelFlutterwaveSubscription,
-  createFlutterwaveCheckout,
   getUserActivity,
   getUserRank,
   getUserTokens,
@@ -58,9 +54,9 @@ import {
   registerForPushNotificationsAsync,
   unregisterStoredPushDeviceAsync,
 } from "@/lib/push-notifications";
+import { openWebAppFlow } from "@/lib/web-links";
 
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
-const CHECKOUT_REDIRECT_URL = "https://chattatutor.com/subscription-success";
 
 type VoiceSpeed = "normal" | "slow";
 type ActiveSheet = "password" | "pricing" | null;
@@ -483,47 +479,16 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleOpenCheckout = async () => {
-    if (Platform.OS === "ios") {
-      toast.info("Premium checkout is currently available on Android and web.");
-      return;
-    }
-
+  const handleOpenBillingOnWeb = async () => {
     try {
       setPaymentLoading(true);
-      const response = await createFlutterwaveCheckout("premium", CHECKOUT_REDIRECT_URL);
-
-      if (Platform.OS === "web") {
-        await Linking.openURL(response.paymentLink);
-      } else {
-        await WebBrowser.openBrowserAsync(response.paymentLink);
-      }
-
       setActiveSheet(null);
-      toast.info("Complete payment in your browser, then come back here and refresh.");
-      await Promise.all([refresh(), loadAccountData()]);
+      await openWebAppFlow("/pricing");
+      toast.info("Finish billing in your browser, then return here and pull to refresh.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't start premium checkout");
+      toast.error(err instanceof Error ? err.message : "Couldn't open billing page");
     } finally {
       setPaymentLoading(false);
-    }
-  };
-
-  const handleCancelSubscription = async () => {
-    if (user?.paymentProvider !== "flutterwave") {
-      toast.info("This subscription is managed on the web for now.");
-      return;
-    }
-
-    try {
-      setCancelLoading(true);
-      await cancelFlutterwaveSubscription();
-      await Promise.all([refresh(), loadAccountData()]);
-      setActiveSheet(null);
-      toast.success("Subscription canceled. Access stays on until the period ends.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't cancel subscription");
-    } finally {
       setCancelLoading(false);
     }
   };
@@ -1059,24 +1024,15 @@ export default function ProfileScreen() {
                   : "You are currently on the free plan."}
               </Text>
               <Text className="mt-2 text-sm leading-6 text-slate-500">
-                Flutterwave checkout is available on Android and web today. iOS purchase flow still depends on the payment decision in Phase 6.
+                Upgrades and subscription changes are handled on chattatutor.com. When you are done, return to the app and refresh your profile.
               </Text>
             </View>
 
-            {planName === "premium" ? (
-              <Button
-                title={user?.paymentProvider === "flutterwave" ? "Cancel subscription" : "Managed on web"}
-                variant="secondary"
-                loading={cancelLoading}
-                onPress={handleCancelSubscription}
-              />
-            ) : (
-              <Button
-                title={Platform.OS === "ios" ? "Upgrade on Android or web" : "Upgrade with Flutterwave"}
-                loading={paymentLoading}
-                onPress={handleOpenCheckout}
-              />
-            )}
+            <Button
+              title={planName === "premium" ? "Manage subscription on web" : "Upgrade on web"}
+              loading={paymentLoading || cancelLoading}
+              onPress={handleOpenBillingOnWeb}
+            />
           </View>
         </View>
       </BottomSheet>

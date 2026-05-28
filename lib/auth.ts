@@ -38,6 +38,9 @@ export interface GoogleSignInResponse {
 
 export { setAuthToken, clearAuthToken, loadAuthToken, getAuthTokenSync };
 
+/** Tells the API to add `from=app` on links in auth emails (web shows Open app banner). */
+export const AUTH_EMAIL_SOURCE_MOBILE = "mobile" as const;
+
 export async function signup(
   email: string,
   username: string,
@@ -45,7 +48,12 @@ export async function signup(
 ): Promise<AuthResponse> {
   const response = await apiFetch(`${AUTH_URL}/signup`, {
     method: "POST",
-    body: JSON.stringify({ email, username, password }),
+    body: JSON.stringify({
+      email,
+      username,
+      password,
+      source: AUTH_EMAIL_SOURCE_MOBILE,
+    }),
     skipAuth: true,
   });
 
@@ -93,7 +101,7 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResponse> {
 export async function resendVerification(email: string): Promise<{ message: string }> {
   const response = await apiFetch(`${AUTH_URL}/resend-verification`, {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, source: AUTH_EMAIL_SOURCE_MOBILE }),
     skipAuth: true,
   });
 
@@ -141,7 +149,7 @@ export async function logout(): Promise<void> {
 export async function forgotPassword(email: string): Promise<{ message: string }> {
   const response = await apiFetch(`${AUTH_URL}/forgot-password`, {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, source: AUTH_EMAIL_SOURCE_MOBILE }),
     skipAuth: true,
   });
 

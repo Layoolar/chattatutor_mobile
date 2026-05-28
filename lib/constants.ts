@@ -2,6 +2,11 @@ export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
   "http://localhost:4000";
 
+/** Marketing / auth / billing site (Next.js frontend). */
+export const WEB_APP_BASE_URL =
+  process.env.EXPO_PUBLIC_WEB_APP_URL?.replace(/\/$/, "") ||
+  "https://chattatutor.com";
+
 export const API_URL = `${API_BASE_URL}/api`;
 export const AUTH_URL = `${API_BASE_URL}/auth`;
 

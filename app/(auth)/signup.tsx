@@ -48,7 +48,7 @@ export default function SignupScreen() {
     try {
       const res = await signup(email.trim(), username.trim(), password);
       if (res.requiresVerification) {
-        router.replace({ pathname: "/(auth)/check-email", params: { email } });
+        router.replace({ pathname: "/(auth)/check-email", params: { email: email.trim() } });
         return;
       }
       await refresh();
