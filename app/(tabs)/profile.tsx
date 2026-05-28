@@ -28,7 +28,7 @@ import {
   X,
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import { Button } from "@/components/Button";
@@ -252,6 +252,7 @@ function BottomSheet({
 export default function ProfileScreen() {
   const { user, refresh, signOut } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ openPricing?: string }>();
   const toast = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const [activity, setActivity] = useState<UserActivity | null>(null);
@@ -262,6 +263,16 @@ export default function ProfileScreen() {
   const [pushSyncing, setPushSyncing] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
+
+  // Deep-link from upgrade prompts: ?openPricing=1 lands here and we auto-open the pricing sheet.
+  // We strip the param after handling so a tab re-focus doesn't keep re-opening it.
+  useEffect(() => {
+    if (params.openPricing === "1") {
+      setActiveSheet("pricing");
+      router.setParams({ openPricing: undefined, from: undefined });
+    }
+  }, [params.openPricing, router]);
+
   const [usernameEditing, setUsernameEditing] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
   const [usernameError, setUsernameError] = useState<string | null>(null);
