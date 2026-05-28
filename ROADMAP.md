@@ -440,9 +440,10 @@ A fresh lesson cleared (lecture + quiz pass) = **700** total. Bigger than a max 
 - [x] UI strings "Knowmad XP" → "Knowmad Level" (hive tab, column header, leave-hive copy)
 - [x] Dashboard rank card consumes new shape; progress derived from `rank.level` (no `indexOf` NaN risk), unit label restored, thresholds hoisted to module scope
 - [x] `UserRank` type updated in web `lib/api.ts` (+ `DecayingLessonRow`, back-compat aliases)
-- [x] `KnowmadRankBadge` already on the 10-tier ladder (Initiate → Grandmaster); badge art for Pioneer/Luminary falls back to Grandmaster SVG until bespoke art ships
+- [x] `KnowmadRankBadge` on the 10-tier ladder with bespoke art for every level — `rank-8-pioneer.svg` (teal summit + flag), `rank-9-luminary.svg` (purple 8-pointed sunburst with glowing core), `rank-10-grandmaster.svg` (refined crown with laurels + star). Filename map updated, `Math.min(8, …)` clamp removed.
 - [x] Hive detail Knowmad Level tab renders member `level` + lifetime mastery via the new endpoint shape
-- [ ] Decay panel on web dashboard — deferred (mobile has it; web can pull `decayingLessons` from the same `/users/rank` response in a follow-up)
+- [x] Decay panel on web dashboard — reads `rank.decayingLessons`, lists top 3 stale lessons with `?decay=1` deep-links to the lesson refresh
+- [x] Web level-up celebration — sonner `<Toaster>` mounted in root layout, shared `lib/celebrate.ts` helper fires from drill, dashboard echo, and lesson quiz on `mastery.leveledUp`
 
 #### Out of scope for Phase 6.5
 

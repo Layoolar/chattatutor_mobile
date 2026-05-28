@@ -11,11 +11,11 @@ import {
   Swords,
   TrendingDown,
   TrendingUp,
-  Trophy,
 } from "lucide-react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import { GradientIcon } from "@/components/GradientIcon";
+import { KnowmadRankBadge } from "@/components/KnowmadRankBadge";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
 import { hasPremiumFeatureAccess } from "@/lib/premium-access";
@@ -312,9 +312,7 @@ export default function CompeteScreen() {
               className="absolute -left-10 bottom-[-30px] h-36 w-36 rounded-full bg-amber-400/20"
             />
             <View className="flex-row items-start gap-3">
-              <GradientIcon size={48} radius={14} from="#a78bfa" to="#6366f1">
-                <Trophy size={22} color="#ffffff" />
-              </GradientIcon>
+              <KnowmadRankBadge level={rank?.level ?? 1} size={48} />
               <View className="flex-1">
                 <Text className="text-xs uppercase tracking-wider font-semibold text-white/60">
                   Knowmad Level{typeof rank?.level === "number" ? ` ${rank.level}` : ""}

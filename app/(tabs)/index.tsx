@@ -11,7 +11,6 @@ import {
   Scroll,
   Sparkles,
   Target,
-  Trophy,
   Upload,
   UsersRound,
   X,
@@ -20,6 +19,7 @@ import { ScreenContainer } from "@/components/ScreenContainer";
 import { Skeleton } from "@/components/Skeleton";
 import { GradientIcon } from "@/components/GradientIcon";
 import { EchoCard } from "@/components/EchoCard";
+import { KnowmadRankBadge } from "@/components/KnowmadRankBadge";
 import { StreakShieldCard } from "@/components/StreakShieldCard";
 import { DidYouKnow } from "@/components/DidYouKnow";
 import { RivalEventsBanner } from "@/components/RivalEventsBanner";
@@ -643,7 +643,7 @@ export default function DashboardHome() {
             </View>
             <View className="flex-1 bg-white rounded-2xl border border-slate-200 p-4 gap-2">
               <View className="w-9 h-9 rounded-lg bg-amber-50 items-center justify-center">
-                <Trophy size={18} color="#ca8a04" />
+                <KnowmadRankBadge level={rank?.level ?? 1} size={28} />
               </View>
               <Text className="text-xs text-slate-500">Rank</Text>
               <Text

@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowUp, Sparkles, Trophy } from "lucide-react-native";
-import { GradientIcon } from "@/components/GradientIcon";
+import { ArrowUp, Sparkles } from "lucide-react-native";
+import { KnowmadRankBadge } from "@/components/KnowmadRankBadge";
 import { haptics } from "@/lib/haptics";
 import type { UserRank } from "@/lib/api";
 
@@ -50,9 +50,7 @@ export function RankProgressCard({ rank }: RankProgressCardProps) {
       }}
     >
       <View className="flex-row items-start gap-3">
-        <GradientIcon size={48} radius={14} from="#fbbf24" to="#f59e0b">
-          <Trophy size={22} color="#ffffff" />
-        </GradientIcon>
+        <KnowmadRankBadge level={rank.level ?? 1} size={48} />
         <View className="flex-1">
           <Text className="text-xs uppercase tracking-wider font-semibold text-amber-700">
             Knowmad Level{typeof rank.level === "number" ? ` ${rank.level}` : ""}
