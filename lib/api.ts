@@ -232,6 +232,21 @@ export interface QuizSubmissionResult {
   mastery?: MasteryCredit;
 }
 
+export interface DecayQuizResultDetail {
+  questionId: string;
+  correct: boolean;
+  selectedIndex: number;
+  correctIndex?: number;
+}
+
+export interface DecayQuizSubmissionResult {
+  score: number;
+  correctCount: number;
+  total: number;
+  details: DecayQuizResultDetail[];
+  decayReset: boolean;
+}
+
 export interface BossQuizQuestion {
   id: string;
   question: string;
@@ -655,11 +670,16 @@ function normalizeQuizQuestion(
     return null;
   }
 
+  const questionId = (question as LessonQuizQuestion & { questionId?: unknown }).questionId;
+  const rawId =
+    typeof question.id === "string" && question.id.trim().length > 0
+      ? question.id
+      : typeof questionId === "string"
+        ? questionId
+        : "";
+
   return {
-    id:
-      typeof question.id === "string" && question.id.trim().length > 0
-        ? question.id
-        : `quiz-${index}-${prompt.slice(0, 24)}`,
+    id: rawId.trim().length > 0 ? rawId.trim() : `quiz-${index}-${prompt.slice(0, 24)}`,
     question: prompt,
     options,
     explanation: question.explanation,
@@ -1170,6 +1190,53 @@ export async function submitQuiz(
   }
 
   return response.json();
+}
+
+export async function getDecayQuiz(
+  pdfId: string,
+  lessonIndex: number,
+): Promise<{ questions: QuizQuestion[] }> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/decay-quiz`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to fetch refresh quiz");
+  }
+
+  const data = (await response.json()) as { questions?: LessonQuizQuestion[] };
+  return {
+    questions: (data.questions ?? [])
+      .map((question, index) => normalizeQuizQuestion(question, index))
+      .filter((question): question is QuizQuestion => question !== null),
+  };
+}
+
+export async function submitDecayQuiz(
+  pdfId: string,
+  lessonIndex: number,
+  answers: Array<{ questionId: string; selectedIndex: number }>,
+): Promise<DecayQuizSubmissionResult> {
+  const response = await apiFetch(
+    `${API_URL}/study-plans/${encodeURIComponent(pdfId)}/lessons/${lessonIndex}/decay-quiz/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to submit refresh quiz");
+  }
+
+  return response.json();
+}
+
+export async function getReviewQueue(): Promise<DecayingLessonRow[]> {
+  const rank = await getUserRank();
+  return rank.decayingLessons ?? [];
 }
 
 export async function recordFlashcardInteraction(

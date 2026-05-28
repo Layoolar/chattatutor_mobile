@@ -162,6 +162,8 @@ export default function DashboardHome() {
   const resumeCourseProgress = resumeCourse ? getProgress(resumeCourse) : 0;
   const activeCourseCount = courses.filter((course) => !course.isComplete).length;
   const weakestConcept = weakConcepts[0] ?? null;
+  const decayingLessons = rank?.decayingLessons ?? [];
+  const reviewQueue = decayingLessons.slice(0, 3);
   const visibleInvitations = pendingInvitations.slice(0, 2);
   const openWeakestConcept = () => {
     if (!weakestConcept) return;
@@ -448,6 +450,63 @@ export default function DashboardHome() {
             </View>
             <ChevronRight size={18} color="#be123c" />
           </Pressable>
+
+          {reviewQueue.length > 0 ? (
+            <View className="overflow-hidden rounded-3xl border border-amber-200 bg-white p-5">
+              <View
+                pointerEvents="none"
+                className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-amber-100/80"
+              />
+              <View className="flex-row items-start gap-3">
+                <GradientIcon size={46} radius={15} from="#f59e0b" to="#fb7185">
+                  <Scroll size={21} color="#ffffff" />
+                </GradientIcon>
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Knowledge refresh
+                  </Text>
+                  <Text className="mt-1 text-lg font-extrabold text-slate-900">
+                    {decayingLessons.length} lesson{decayingLessons.length === 1 ? " is" : "s are"} fading
+                  </Text>
+                  <Text className="mt-1 text-sm leading-6 text-slate-600">
+                    A quick quiz resets the decay clock and rebuilds stale mastery.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mt-4 gap-2">
+                {reviewQueue.map((lesson) => (
+                  <Pressable
+                    key={`${lesson.pdfId}-${lesson.lessonIndex}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/lesson/[pdfId]/[lessonIndex]",
+                        params: {
+                          pdfId: lesson.pdfId,
+                          lessonIndex: String(lesson.lessonIndex),
+                          decay: "1",
+                        },
+                      })
+                    }
+                    className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 active:bg-amber-100"
+                  >
+                    <View className="flex-row items-center gap-3">
+                      <View className="flex-1">
+                        <Text className="text-sm font-bold text-slate-900" numberOfLines={1}>
+                          {lesson.title}
+                        </Text>
+                        <Text className="mt-1 text-xs text-slate-500">
+                          {lesson.daysSinceLastReview} days since review · {Math.round(lesson.currentMastery)} mastery
+                        </Text>
+                      </View>
+                      <Text className="text-xs font-semibold text-amber-700">~2 min</Text>
+                      <ChevronRight size={16} color="#b45309" />
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           {/* Primary action: upload or topic */}
           <View className="gap-3">

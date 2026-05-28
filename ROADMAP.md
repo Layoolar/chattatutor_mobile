@@ -885,7 +885,8 @@ EXPO_PUBLIC_WEB_APP_URL=https://chattatutor.com
 ### Quick test
 
 ```bash
-# From mobile dev: tap Forgot password → browser should show ?from=app and the banner
+# From mobile dev: tap Forgot password → enter email in app → email link should include ?from=app and the web banner
+# From a verify/reset deep link into the app → WebFlowRedirect should open the same web path with token + ?from=app
 # After Profile → Upgrade on web → complete or cancel → subscription-success|failure?from=app
 ```
 
@@ -1053,24 +1054,25 @@ moment lives, and it's the single most important screen in the app.
 
 > Backend already exposes `GET /study-plans/:pdfId/lessons/:idx/decay-quiz`
 > and `POST .../submit`. Web triggers it via `?decay=1` URL param on the
-> lesson page. Mobile has zero trigger.
+> lesson page. Mobile now mirrors that with a Home review queue tile and an
+> in-lesson Knowledge Refresh overlay.
 
 The decay model on the backend is **elapsed-day decay**, not SM-2:
 `decayDays = (now - lessonCompletedAt) / day`. Lessons completed today are
 skipped; everything older is ranked by `decayDays` descending. Same data
 already feeds the Daily Drill (which mobile consumes).
 
-- [ ] Add `getDecayQuiz(pdfId, lessonIndex)` and `submitDecayQuiz(pdfId, lessonIndex, answers)` to `lib/api.ts`
-- [ ] Add `getReviewQueue()` to `lib/api.ts` — fetches the ranked list of decayed lessons (reuse the daily-drill ranking or expose a dedicated endpoint if the backend grows one)
-- [ ] **Review queue tile on Home tab** — card titled "N lessons are fading" listing the 3 most-decayed lessons with mini CTAs ("Refresh in ~2 min")
-- [ ] On tile tap, navigate to the lesson with a `decay=1` param: `/lesson/[pdfId]/[lessonIndex]?decay=1`
-- [ ] In the lesson page, when `decay === "1"` is present in params:
-  - [ ] Show a full-screen *Knowledge Refresh* overlay BEFORE the lecture content
-  - [ ] Render the decay quiz questions (4 multi-choice from `getDecayQuiz`)
-  - [ ] On submit ≥80%: success state, "decay clock reset, mastery restored", auto-dismiss into the lecture
-  - [ ] On submit <80%: still allow lecture entry but no review bonus
-  - [ ] Skip button — bypasses the overlay, no bonus, no penalty
-- [ ] Surface the 200-point "review bonus" in the quiz result mastery breakdown when `decay=1` was active for this entry
+- [x] Add `getDecayQuiz(pdfId, lessonIndex)` and `submitDecayQuiz(pdfId, lessonIndex, answers)` to `lib/api.ts`
+- [x] Add `getReviewQueue()` to `lib/api.ts` — reuses `/users/rank.decayingLessons`
+- [x] **Review queue tile on Home tab** — card titled "N lessons are fading" listing the 3 most-decayed lessons with mini CTAs ("Refresh in ~2 min")
+- [x] On tile tap, navigate to the lesson with a `decay=1` param: `/lesson/[pdfId]/[lessonIndex]?decay=1`
+- [x] In the lesson page, when `decay === "1"` is present in params:
+  - [x] Show a full-screen *Knowledge Refresh* overlay BEFORE the lecture content
+  - [x] Render the decay quiz questions from `getDecayQuiz` (backend returns up to 5)
+  - [x] On submit ≥80%: success state, "decay clock refreshed", continue into lecture
+  - [x] On submit <80%: warm-up state still allows lecture entry
+  - [x] Skip button — bypasses the overlay, no bonus, no penalty
+- [x] Surface the review score and per-question correct/missed breakdown before continuing to lecture
 - [ ] Out of scope: SM-2 algorithm, per-card retention modeling, server-side scheduling
 
 #### What we are NOT building (decisions logged)

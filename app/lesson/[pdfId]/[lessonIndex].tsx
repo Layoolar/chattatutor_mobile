@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   ExternalLink,
   Flag,
   ListChecks,
@@ -51,12 +52,17 @@ import {
   chatWithAI,
   createQualityReport,
   explainSlide,
+  getDecayQuiz,
   getLesson,
   markLectureComplete,
+  QUIZ_PASS_MARK,
+  submitDecayQuiz,
   type ApiErrorWithCode,
   type ChatMessage,
+  type DecayQuizSubmissionResult,
   type Lesson,
   type LearningSection,
+  type QuizQuestion,
 } from "@/lib/api";
 import { API_URL } from "@/lib/constants";
 import { haptics } from "@/lib/haptics";
@@ -856,14 +862,281 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` };
 }
 
+// ───── Knowledge Refresh ───────────────────────────────────────────────────
+
+type DecayQuizOverlayProps = {
+  pdfId: string;
+  lessonIndex: number;
+  onDismiss: () => void;
+};
+
+function DecayQuizOverlay({ pdfId, lessonIndex, onDismiss }: DecayQuizOverlayProps) {
+  const toast = useToast();
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<DecayQuizSubmissionResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setResult(null);
+    setAnswers({});
+
+    (async () => {
+      try {
+        const data = await getDecayQuiz(pdfId, lessonIndex);
+        if (cancelled) return;
+        setQuestions(data.questions);
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : "Couldn't load refresh quiz");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonIndex, pdfId, toast]);
+
+  const answeredCount = useMemo(
+    () => questions.filter((question) => typeof answers[question.id] === "number").length,
+    [answers, questions],
+  );
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
+  const passed = (result?.score ?? 0) >= QUIZ_PASS_MARK;
+
+  const submit = async () => {
+    if (!allAnswered || submitting) return;
+    haptics.tap();
+    setSubmitting(true);
+    try {
+      const response = await submitDecayQuiz(
+        pdfId,
+        lessonIndex,
+        questions.map((question) => ({
+          questionId: question.id,
+          selectedIndex: answers[question.id] ?? -1,
+        })),
+      );
+      setResult(response);
+      if (response.score >= QUIZ_PASS_MARK) {
+        haptics.success();
+      } else {
+        haptics.warning();
+      }
+    } catch (err) {
+      haptics.error();
+      toast.error(err instanceof Error ? err.message : "Couldn't submit refresh quiz");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View className="flex-1 justify-center p-6">
+        <View className="items-center gap-4 rounded-3xl border border-amber-100 bg-white p-6">
+          <ActivityIndicator color="#f59e0b" size="large" />
+          <Text className="text-center text-lg font-extrabold text-slate-900">
+            Loading Knowledge Refresh
+          </Text>
+          <Text className="text-center text-sm leading-6 text-slate-500">
+            Pulling a short quiz from this lesson before you reread.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <View className="flex-1 justify-center p-6">
+        <View className="items-center gap-4 rounded-3xl border border-slate-200 bg-white p-6">
+          <CircleAlert size={34} color="#f59e0b" />
+          <Text className="text-center text-xl font-extrabold text-slate-900">
+            Refresh unavailable
+          </Text>
+          <Text className="text-center text-sm leading-6 text-slate-500">
+            This lesson doesn't have enough questions for a refresh quiz yet.
+          </Text>
+          <ButtonPill label="Continue to lesson" onPress={onDismiss} tone="dark" />
+        </View>
+      </View>
+    );
+  }
+
+  if (result) {
+    return (
+      <ScrollView className="flex-1 bg-slate-950" contentContainerClassName="p-5 gap-4">
+        <View className="overflow-hidden rounded-3xl bg-white p-6">
+          <View
+            pointerEvents="none"
+            className={`absolute -right-10 -top-10 h-32 w-32 rounded-full ${
+              passed ? "bg-emerald-100" : "bg-amber-100"
+            }`}
+          />
+          <View className="items-center gap-3">
+            <View
+              className={`h-16 w-16 items-center justify-center rounded-3xl ${
+                passed ? "bg-emerald-100" : "bg-amber-100"
+              }`}
+            >
+              <CheckCircle2 size={34} color={passed ? "#059669" : "#d97706"} />
+            </View>
+            <Text className="text-center text-2xl font-extrabold text-slate-900">
+              {passed ? "Decay clock refreshed" : "Good warm-up"}
+            </Text>
+            <Text className="text-center text-sm leading-6 text-slate-600">
+              You scored {result.score}% ({result.correctCount}/{result.total}).{" "}
+              {passed
+                ? "Your review is recorded and the lesson is ready to continue."
+                : "You can still enter the lecture and rebuild the weak spots."}
+            </Text>
+          </View>
+        </View>
+
+        <View className="gap-2">
+          {result.details.map((detail, index) => {
+            const question = questions.find((item) => item.id === detail.questionId);
+            return (
+              <View
+                key={`${detail.questionId}-${index}`}
+                className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3"
+              >
+                <Text className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                  Question {index + 1}
+                </Text>
+                <Text className="mt-1 text-sm font-semibold text-white" numberOfLines={2}>
+                  {question?.question ?? "Question"}
+                </Text>
+                <Text className={`mt-2 text-sm font-bold ${detail.correct ? "text-emerald-300" : "text-amber-300"}`}>
+                  {detail.correct ? "Correct" : "Needs review"}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <Pressable
+          onPress={onDismiss}
+          className="mb-4 mt-1 h-14 items-center justify-center rounded-full bg-white active:bg-slate-100"
+        >
+          <Text className="text-sm font-extrabold text-slate-950">Continue to lesson</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView className="flex-1 bg-slate-950" contentContainerClassName="p-5 gap-4">
+      <View className="rounded-3xl bg-white p-5">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+          Knowledge Refresh
+        </Text>
+        <Text className="mt-2 text-2xl font-extrabold text-slate-900">
+          Prove this lesson is still yours
+        </Text>
+        <Text className="mt-2 text-sm leading-6 text-slate-600">
+          Answer {questions.length} quick questions before opening the lecture. Score 80%+ to confirm mastery.
+        </Text>
+        <Text className="mt-3 text-xs font-semibold text-slate-500">
+          {answeredCount}/{questions.length} answered
+        </Text>
+      </View>
+
+      {questions.map((question, questionIndex) => (
+        <View key={question.id} className="rounded-3xl border border-white/10 bg-white p-4">
+          <Text className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Question {questionIndex + 1}
+          </Text>
+          <Text className="mt-2 text-base font-extrabold leading-6 text-slate-900">
+            {question.question}
+          </Text>
+          <View className="mt-4 gap-2">
+            {question.options.map((option, optionIndex) => {
+              const selected = answers[question.id] === optionIndex;
+              return (
+                <Pressable
+                  key={`${question.id}-${optionIndex}`}
+                  onPress={() => {
+                    haptics.tick();
+                    setAnswers((current) => ({ ...current, [question.id]: optionIndex }));
+                  }}
+                  className={`rounded-2xl border px-4 py-3 ${
+                    selected ? "border-amber-500 bg-amber-50" : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <Text className={`text-sm leading-6 ${selected ? "font-bold text-amber-800" : "text-slate-700"}`}>
+                    {String.fromCharCode(65 + optionIndex)}. {option}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
+      <View className="mb-4 gap-3">
+        <Pressable
+          onPress={submit}
+          disabled={!allAnswered || submitting}
+          className={`h-14 items-center justify-center rounded-full ${
+            !allAnswered || submitting ? "bg-slate-700" : "bg-amber-500 active:bg-amber-600"
+          }`}
+        >
+          <Text className="text-sm font-extrabold text-white">
+            {submitting ? "Checking..." : "Submit refresh"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onDismiss}
+          disabled={submitting}
+          className="h-12 items-center justify-center rounded-full border border-white/15"
+        >
+          <Text className="text-sm font-semibold text-white/70">Skip and read lesson</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+function ButtonPill({
+  label,
+  onPress,
+  tone,
+}: {
+  label: string;
+  onPress: () => void;
+  tone: "dark" | "light";
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`h-12 items-center justify-center rounded-full px-6 ${
+        tone === "dark" ? "bg-slate-900" : "bg-white"
+      }`}
+    >
+      <Text className={`text-sm font-extrabold ${tone === "dark" ? "text-white" : "text-slate-900"}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 // ───── Main Screen ─────────────────────────────────────────────────────────
 
 export default function LessonDetailScreen() {
   const router = useRouter();
   const toast = useToast();
-  const { pdfId, lessonIndex } = useLocalSearchParams<{
+  const { pdfId, lessonIndex, decay } = useLocalSearchParams<{
     pdfId: string;
     lessonIndex: string;
+    decay?: string;
   }>();
 
   const index = Number(lessonIndex ?? 0);
@@ -872,6 +1145,7 @@ export default function LessonDetailScreen() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<LessonTab>("lecture");
+  const [decayDismissed, setDecayDismissed] = useState(false);
 
   // Slide reveal-teaching state
   const [revealedUpTo, setRevealedUpTo] = useState(0);
@@ -897,8 +1171,9 @@ export default function LessonDetailScreen() {
     setAckByIndex({});
     setConsecutiveSkips(0);
     setFlashcardsDone(false);
+    setDecayDismissed(false);
     lectureCompleteSentRef.current = false;
-  }, [pdfId, index]);
+  }, [pdfId, index, decay]);
 
   useEffect(() => {
     if (!pdfId || Number.isNaN(index)) return;
@@ -1038,6 +1313,7 @@ export default function LessonDetailScreen() {
 
   const hasFlashcards = (lesson?.flashcards?.length ?? 0) > 0;
   const quizLocked = !lectureComplete || (hasFlashcards && !flashcardsDone);
+  const showDecayQuiz = decay === "1" && !decayDismissed && !!pdfId && !Number.isNaN(index);
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50" edges={["top", "bottom"]}>
@@ -1061,12 +1337,22 @@ export default function LessonDetailScreen() {
 
       <TabBar active={tab} onChange={setTab} quizLocked={quizLocked} />
 
-      {tab === "lecture" && pdfId && !Number.isNaN(index) ? (
+      {tab === "lecture" && !showDecayQuiz && pdfId && !Number.isNaN(index) ? (
         <LectureAudioPlayer pdfId={String(pdfId)} lessonIndex={index} />
       ) : null}
 
       <View className="flex-1">
-        {loading ? (
+        {showDecayQuiz ? (
+          <DecayQuizOverlay
+            pdfId={String(pdfId)}
+            lessonIndex={index}
+            onDismiss={() => {
+              haptics.tick();
+              setDecayDismissed(true);
+              setTab("lecture");
+            }}
+          />
+        ) : loading ? (
           <View className="gap-3 p-5">
             <Skeleton.Line width="60%" height={24} />
             <Skeleton.Card height={280} />
