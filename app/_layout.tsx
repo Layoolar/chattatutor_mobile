@@ -12,6 +12,7 @@ import { onUnauthorized } from "@/lib/fetch";
 import {
   configureNotificationPresentation,
   installNotificationResponseListener,
+  installPushTokenRotationListener,
 } from "@/lib/push-notifications";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -69,7 +70,12 @@ function NotificationBridge() {
 
   useEffect(() => {
     configureNotificationPresentation();
-    return installNotificationResponseListener(router);
+    const tapCleanup = installNotificationResponseListener(router);
+    const rotationCleanup = installPushTokenRotationListener();
+    return () => {
+      tapCleanup();
+      rotationCleanup();
+    };
   }, [router]);
 
   return null;

@@ -12,6 +12,9 @@ import {
 
 const PUSH_TOKEN_KEY = "push_expo_token_v1";
 const PUSH_DEVICE_ID_KEY = "push_device_id_v1";
+// Stored on registration so the token-rotation listener can re-register with
+// the user's current preferences instead of clobbering them with defaults.
+const PUSH_PREFS_KEY = "push_preferences_v1";
 
 type RouterLike = {
   push: (href: any) => void;
@@ -91,6 +94,20 @@ async function saveExpoPushToken(token: string) {
   await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
 }
 
+async function saveStoredPreferences(prefs: PushPreferences) {
+  await AsyncStorage.setItem(PUSH_PREFS_KEY, JSON.stringify(prefs));
+}
+
+async function getStoredPreferences(): Promise<PushPreferences | null> {
+  const raw = await AsyncStorage.getItem(PUSH_PREFS_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PushPreferences;
+  } catch {
+    return null;
+  }
+}
+
 export async function registerForPushNotificationsAsync(
   preferences: PushPreferences,
 ): Promise<PushRegistrationResult> {
@@ -133,6 +150,7 @@ export async function registerForPushNotificationsAsync(
       preferences: syncedPreferences,
     });
     await saveExpoPushToken(expoPushToken);
+    await saveStoredPreferences(syncedPreferences);
 
     return { status: "registered", expoPushToken };
   } catch (error) {
@@ -150,7 +168,9 @@ export async function syncStoredPushPreferencesAsync(
   if (!token) return registerForPushNotificationsAsync(preferences);
 
   try {
-    await updatePushPreferences(token, withLocalTimezone(preferences));
+    const synced = withLocalTimezone(preferences);
+    await updatePushPreferences(token, synced);
+    await saveStoredPreferences(synced);
     return { status: "registered", expoPushToken: token };
   } catch (error) {
     return {
@@ -220,7 +240,26 @@ function notificationHrefFromData(data: Record<string, unknown>): string | null 
   if (type === "lesson") {
     const pdfId = stringFromData(data.pdfId);
     const lessonIndex = stringFromData(data.lessonIndex);
-    return pdfId && lessonIndex ? `/lesson/${pdfId}/${lessonIndex}` : "/(tabs)/lessons";
+    if (!pdfId || !lessonIndex) return "/(tabs)/lessons";
+    // Optional `decay=1` arrives on weak-concept refresh pushes — opens the
+    // lesson with the Knowledge Refresh overlay up front.
+    const decay = stringFromData(data.decay);
+    return decay === "1"
+      ? `/lesson/${pdfId}/${lessonIndex}?decay=1`
+      : `/lesson/${pdfId}/${lessonIndex}`;
+  }
+  if (type === "review_queue") {
+    // Weak-concept queue nudge — drop the user on the home tab where the
+    // decay panel lives. They pick which lesson to refresh.
+    return "/(tabs)";
+  }
+  if (type === "boss_quiz") {
+    const pdfId = stringFromData(data.pdfId);
+    return pdfId ? `/course/${pdfId}/boss-quiz` : "/(tabs)/lessons";
+  }
+  if (type === "course") {
+    const pdfId = stringFromData(data.pdfId);
+    return pdfId ? `/course/${pdfId}` : "/(tabs)/lessons";
   }
 
   return null;
@@ -240,5 +279,41 @@ export function installNotificationResponseListener(router: RouterLike): () => v
     .catch(() => {});
 
   const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
+  return () => subscription.remove();
+}
+
+/**
+ * Re-register the device when Expo rotates the push token. Token rotation
+ * happens silently on app upgrades, reinstalls, and at Expo's discretion.
+ * Without this listener, our backend record would point at a dead token
+ * after rotation. Replays the user's stored preferences so we don't clobber
+ * their toggles with defaults.
+ */
+export function installPushTokenRotationListener(): () => void {
+  const subscription = Notifications.addPushTokenListener(async (event) => {
+    try {
+      const newToken = event.data;
+      if (!newToken) return;
+      const existing = await getStoredExpoPushToken();
+      if (existing === newToken) return; // No-op, same token.
+
+      const deviceId = await getDeviceId();
+      const stored = await getStoredPreferences();
+      const preferences = stored ? withLocalTimezone(stored) : withLocalTimezone(DEFAULT_PUSH_PREFERENCES);
+
+      await registerPushDevice({
+        expoPushToken: newToken,
+        deviceId,
+        platform: Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "unknown",
+        appVersion: Constants.expoConfig?.version ?? null,
+        preferences,
+      });
+      await saveExpoPushToken(newToken);
+    } catch (err) {
+      // Token rotation is silent — don't surface to the user. Next foreground
+      // registration will reconcile if this listener failed.
+      console.warn("[push] token rotation re-register failed:", err);
+    }
+  });
   return () => subscription.remove();
 }

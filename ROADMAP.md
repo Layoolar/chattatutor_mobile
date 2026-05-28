@@ -465,21 +465,21 @@ A fresh lesson cleared (lecture + quiz pass) = **700** total. Bigger than a max 
   - [x] Social + competition alerts toggle
   - [x] Account/billing alerts toggle
   - [x] Quiet hours + local-time delivery window
-- [ ] **Push trigger pack v1**
-  - [ ] **Daily review / daily drill** — morning or early-evening nudge when a drill is ready and the user has not studied yet that day
-  - [ ] **Streak at risk** — one save-your-streak nudge near the user's preferred reminder window if they are about to lose an active streak
-  - [ ] **Weak-concept / review queue ready** — send when the user has newly surfaced weak concepts or an overdue review pile, but only if they have been inactive for a while
-  - [ ] **Next session or boss quiz unlocked** — celebrate progress when a lesson section, next session, or boss quiz becomes available after passing the required threshold
-  - [ ] **1v1 challenge alerts** — invite received, opponent played, your turn, and final result
-  - [ ] **Hive / team alerts** — invited to a hive, accepted into a team, team challenge result, and important team announcement
-  - [ ] **League summary** — weekly reset, promotion/relegation result, or "you are close to promotion/relegation" summary, capped tightly
-  - [ ] **Account alerts** — subscription renewal failure, expiring trial, or payment confirmation where applicable
-- [ ] **Push guardrails**
-  - [ ] Max one learning nudge per day unless the user explicitly opts into more
-  - [ ] Batch social alerts where possible instead of sending one push per event
-  - [ ] Never push for every quiz result, every lesson completion, every vote, or every community interaction
-  - [ ] Suppress nudges shortly after the user was already active in-app
-  - [ ] Every push must deep link to one useful destination, not just the home tab
+- [x] **Push trigger pack v1**
+  - [x] **Daily review / daily drill** — `src/jobs/dailyDrillReminder.ts` fires at user-local 8am if today's not yet in `activityDates`. Hourly cron, TZ-aware per stored device timezone.
+  - [x] **Streak at risk** — `src/jobs/streakAtRisk.ts` fires user-local 18:00–20:00 when `currentStreak >= 3` and today not yet active. Shield count surfaced in copy.
+  - [x] **Weak-concept / review queue ready** — `src/jobs/weakConceptQueue.ts` fires user-local 9am only when user has been inactive ≥ 3 days AND has lessons completed > 7 days ago. SQL-side pre-filter keeps candidate pool small.
+  - [x] **Next session or boss quiz unlocked** — event hook in `submitQuizHandler` (studyPlanController). Fires on `firstPassToday` only; 15-min activity suppression in the send service blocks the push when the user is still in-app, so it only delivers if they backgrounded the app between submit and dispatch. Boss-quiz path links to `/course/[pdfId]/boss-quiz`.
+  - [x] **1v1 challenge alerts** — invite received (`createChallengeHandler`), opponent accepted (`acceptChallengeHandler` on activate), opponent played / your turn (single-side complete in `completeChallengeHandler`), final result (allCompleted branch). Winner gets celebratory copy; loser/tie gets softer "see the breakdown" nudge.
+  - [x] **Hive / team alerts** — hive invitation push in `createInvitationHandler` (only for known `targetUserId`; email-only invites stay email-channel); invite-accepted push to inviter in `acceptInvitationHandler`. (Team challenges flow through the 1v1 challenge hooks since they're regular challenges.) Global community announcement push intentionally skipped — it would be too broad/spammy.
+  - [x] **League summary** — `src/jobs/leagueSummary.ts` fires Saturday 18:00 UTC, before Sunday 00:00 UTC league rollover. Capped tightly: only promotion zone, relegation zone, or within 2 ranks of either edge get a push. Mid-pack "safe" users are silent.
+  - [ ] **Account alerts** — intentionally skipped per Phase 6 decision (billing is web-only). Email channel still fires on subscription events; mobile push is reserved for learning/social.
+- [x] **Push guardrails** — all enforced inside `src/services/pushNotificationService.ts` so every trigger inherits them automatically.
+  - [x] **Max one learning nudge / day** — `User.lastLearningPushAt` column gates `channel: 'learning'` sends to once per 22 hours per user.
+  - [x] **Batch social alerts** — `sendPushToUsers([])` helper batches at the send-service level with concurrency 5; Expo SDK handles its own chunking inside that.
+  - [x] **No spam on routine events** — pushes are only wired on the 8 trigger types above; routine quiz/lesson/vote/community completions intentionally have no push hook.
+  - [x] **Suppress when recently in-app** — 15-minute window keyed off `push_devices.last_seen_at` (touched on every authed register/refresh).
+  - [x] **Deep link required** — `validatePayload()` rejects any send missing `data.type`; the send service throws synchronously so a missing target can't ship.
 - [ ] **Universal / App Links** for verify-email + reset-password — app config is wired; hosted domain files + EAS rebuild remain (see Phase 7.7)
 - [x] **Haptics** — `lib/haptics.ts` semantic helpers wired across taps, transitions, success/error
 - [x] **Reanimated** screen transitions + key interactions — flashcard flip, quiz transitions, lesson progress bar, confetti
@@ -954,12 +954,12 @@ moment lives, and it's the single most important screen in the app.
 
 - [ ] **Phase 8 — Visual rendering engine** (whole phase, 8.0 → 8.6). Native rebuild of `visual-diagram.tsx` with Expo Go-safe React Native views. Multi-session: foundation → simple layouts → dagre hierarchical → pan/zoom → walkthrough → Build Mode → polish.
 
-### Push notifications (Phase 7)
+### Push notifications (Phase 7) ✅ DONE
 
-- [x] **Expo Push registration** — request permission at a value moment, persist token server-side, handle logout / opt-out / reinstall / rotation, deep-link routing on tap
+- [x] **Expo Push registration** — request permission at a value moment, persist token server-side, handle logout / opt-out / reinstall / rotation (rotation listener wired in `lib/push-notifications.ts:installPushTokenRotationListener`), deep-link routing on tap (`review_queue`, `boss_quiz`, `course`, `lesson?decay=1` added Phase 7)
 - [x] **Push preferences** in Profile — learning / social / account toggles + quiet hours
-- [ ] **Push trigger pack v1** — daily drill, streak at risk, weak-concept queue, next-session unlock, 1v1 challenge alerts, hive alerts, league summary, account alerts
-- [ ] **Push guardrails** — max 1 learning nudge / day, batch social alerts, suppress when user was just active, every push deep-links to one useful destination
+- [x] **Push trigger pack v1** — daily drill, streak at risk, weak-concept queue, next-session / boss-quiz unlock, 1v1 challenge alerts (4 events), hive alerts (2 events), weekly league summary. Account alerts intentionally skipped (web-only billing per Phase 6).
+- [x] **Push guardrails** — max 1 learning nudge / 22h, social batched, in-app suppression 15min, every push validated for `data.type`. All enforced inside `pushNotificationService.sendPushToUser`.
 
 ### Deep linking (Phase 7.7)
 
