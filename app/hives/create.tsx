@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, Lock, Plus, ShieldCheck, UsersRound } from "lucide-react-native";
+import { ChevronLeft, Lock, Plus, ShieldCheck, UsersRound, type LucideIcon } from "lucide-react-native";
 import { Button } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { Input } from "@/components/Input";
@@ -21,7 +21,7 @@ function SettingChoice({
   selected,
   onPress,
 }: {
-  icon: React.ComponentType<{ size?: number; color?: string }>;
+  icon: LucideIcon;
   title: string;
   description: string;
   selected: boolean;

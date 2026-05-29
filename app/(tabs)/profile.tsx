@@ -23,6 +23,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   Volume2,
   X,
@@ -37,7 +38,7 @@ import { ActivityHeatmap } from "@/components/ActivityHeatmap";
 import { GradientIcon } from "@/components/GradientIcon";
 import { RankProgressCard } from "@/components/RankProgressCard";
 import { useAuth } from "@/lib/auth-context";
-import { changePassword, updateUsername } from "@/lib/auth";
+import { changePassword, deleteAccount, updateUsername } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import {
   getUserActivity,
@@ -59,7 +60,7 @@ import { openWebAppFlow } from "@/lib/web-links";
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
 
 type VoiceSpeed = "normal" | "slow";
-type ActiveSheet = "password" | "pricing" | null;
+type ActiveSheet = "password" | "pricing" | "deleteAccount" | null;
 
 interface ProfileSettings {
   learningReminders: boolean;
@@ -282,6 +283,9 @@ export default function ProfileScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
 
   const loadAccountData = useCallback(async () => {
@@ -415,6 +419,38 @@ export default function ProfileScreen() {
     await signOut();
     toast.success("Signed out");
     router.replace("/landing");
+  };
+
+  // Apple guideline 5.1.1(v): in-app account deletion must be available.
+  // Local accounts require their password as re-auth; OAuth (Google) users
+  // already proved identity via the valid JWT so we skip the password.
+  const isLocalAccount = (user?.authProvider || "local") === "local";
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
+      toast.error("Type DELETE to confirm");
+      return;
+    }
+    if (isLocalAccount && !deletePassword) {
+      toast.error("Password required");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteAccount(isLocalAccount ? deletePassword : undefined);
+      // Clear local session + sheet state, then route. Order matters — sheet
+      // unmounts before navigation so the modal doesn't dismiss mid-route.
+      setActiveSheet(null);
+      setDeleteConfirmText("");
+      setDeletePassword("");
+      await signOut();
+      toast.success("Account deleted");
+      router.replace("/landing");
+    } catch (err: any) {
+      const msg = err?.message ?? "Couldn't delete account";
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleUsernameSave = async () => {
@@ -936,6 +972,28 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Danger zone — account deletion (Apple 5.1.1(v)) */}
+          <View className="mt-4 mb-8 rounded-3xl border border-rose-200 bg-rose-50/40 p-4 gap-3">
+            <View className="flex-row items-center gap-2">
+              <Trash2 size={16} color="#be123c" />
+              <Text className="text-sm font-bold text-rose-700">Delete account</Text>
+            </View>
+            <Text className="text-xs leading-5 text-rose-900/80">
+              Permanently removes your account, courses, and mastery. Any active subscription is
+              cancelled. This cannot be undone.
+            </Text>
+            <Pressable
+              onPress={() => {
+                setDeleteConfirmText("");
+                setDeletePassword("");
+                setActiveSheet("deleteAccount");
+              }}
+              className="self-start rounded-full bg-rose-600 px-4 py-2 active:bg-rose-700"
+            >
+              <Text className="text-xs font-semibold text-white">Delete my account</Text>
+            </Pressable>
+          </View>
         </View>
       </ScreenContainer>
 
@@ -975,6 +1033,83 @@ export default function ProfileScreen() {
             placeholder="Confirm new password"
           />
           <Button title="Update password" loading={passwordSaving} onPress={handleChangePassword} />
+        </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={activeSheet === "deleteAccount"}
+        title="Delete your account?"
+        subtitle="This permanently deletes your account, courses, mastery, and cancels any active subscription. It cannot be undone."
+        onClose={() => {
+          if (!deleting) setActiveSheet(null);
+        }}
+      >
+        <View className="gap-4 pb-4">
+          <View className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 gap-1">
+            <Text className="text-sm font-semibold text-rose-900">What gets deleted</Text>
+            <Text className="text-xs leading-5 text-rose-900/80">
+              • Your profile, courses, lessons, and mastery progress{"\n"}
+              • Personal data (email, name) — anonymised on our servers{"\n"}
+              • Hive memberships and challenges you created{"\n"}
+              • Any active subscription — you won't be charged again
+            </Text>
+          </View>
+
+          {isLocalAccount ? (
+            <Input
+              label="Confirm with your password"
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              secureToggle
+              secureTextEntry
+              placeholder="Enter your password"
+            />
+          ) : (
+            <Text className="text-xs leading-5 text-slate-500">
+              You signed in with {user?.authProvider === "google" ? "Google" : user?.authProvider}. No password is required — your sign-in token is the confirmation.
+            </Text>
+          )}
+
+          <Input
+            label='Type "DELETE" to confirm'
+            value={deleteConfirmText}
+            onChangeText={setDeleteConfirmText}
+            autoCapitalize="characters"
+            placeholder="DELETE"
+          />
+
+          <Pressable
+            onPress={handleDeleteAccount}
+            disabled={
+              deleting ||
+              deleteConfirmText.trim().toUpperCase() !== "DELETE" ||
+              (isLocalAccount && !deletePassword)
+            }
+            className={`items-center justify-center rounded-full px-4 py-3 ${
+              deleting ||
+              deleteConfirmText.trim().toUpperCase() !== "DELETE" ||
+              (isLocalAccount && !deletePassword)
+                ? "bg-rose-300"
+                : "bg-rose-600 active:bg-rose-700"
+            }`}
+          >
+            {deleting ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text className="text-sm font-semibold text-white">
+                Permanently delete my account
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              if (!deleting) setActiveSheet(null);
+            }}
+            className="self-center py-3"
+          >
+            <Text className="text-sm font-medium text-slate-500">Cancel</Text>
+          </Pressable>
         </View>
       </BottomSheet>
 

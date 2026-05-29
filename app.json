@@ -16,7 +16,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.chattatutor.mobile",
-      "associatedDomains": ["applinks:chattatutor.com"]
+      "associatedDomains": ["applinks:chattatutor.com"],
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {

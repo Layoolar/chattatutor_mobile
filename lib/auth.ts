@@ -124,6 +124,33 @@ export async function googleSignIn(idToken: string): Promise<GoogleSignInRespons
   return data;
 }
 
+/**
+ * Sign in with Apple. Required on iOS by Apple guideline 4.8 since we also
+ * offer Google. The native Apple UI is presented by `expo-apple-authentication`
+ * in the component; this helper just hands the signed identityToken to the
+ * backend, which verifies against Apple's JWKS and mints our own JWT.
+ *
+ * `fullName` is only available on the very first sign-in per user (Apple's
+ * decision) — pass through when provided so the new-user flow can seed a
+ * decent username.
+ */
+export async function appleSignIn(input: {
+  identityToken: string;
+  fullName?: string;
+}): Promise<GoogleSignInResponse> {
+  const response = await apiFetch(`${AUTH_URL}/apple`, {
+    method: "POST",
+    body: JSON.stringify(input),
+    skipAuth: true,
+  });
+
+  if (!response.ok) await throwApiError(response, "Apple sign-in failed");
+
+  const data: GoogleSignInResponse = await response.json();
+  if (data.token) await setAuthToken(data.token);
+  return data;
+}
+
 export async function getCurrentUser(): Promise<User | null> {
   const token = await loadAuthToken();
   if (!token) return null;
@@ -193,4 +220,24 @@ export async function updateUsername(username: string): Promise<{ username: stri
 
   if (!response.ok) await throwApiError(response, "Failed to update username");
   return response.json();
+}
+
+/**
+ * Permanently delete the user's account. Apple guideline 5.1.1(v) — must be
+ * available in-app. Server returns 204 on success; on success the caller MUST
+ * clear local auth state and route to the landing screen.
+ *
+ * For local accounts, `password` is required. For OAuth (Google) users, leave
+ * it undefined — the valid JWT is sufficient re-auth.
+ */
+export async function deleteAccount(password?: string): Promise<void> {
+  const token = getAuthTokenSync() ?? (await loadAuthToken());
+  if (!token) throw new Error("Not authenticated");
+
+  const response = await apiFetch(`${AUTH_URL}/account`, {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  });
+
+  if (!response.ok) await throwApiError(response, "Failed to delete account");
 }

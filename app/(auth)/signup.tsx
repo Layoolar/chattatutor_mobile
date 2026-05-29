@@ -8,7 +8,8 @@ import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { GoogleButton } from "@/components/GoogleButton";
-import { signup } from "@/lib/auth";
+import { AppleButton } from "@/components/AppleButton";
+import { appleSignIn, signup } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useGoogleSignIn } from "@/lib/google-auth";
 
@@ -30,6 +31,21 @@ export default function SignupScreen() {
     if (!res) return;
     await refresh();
     router.replace("/(tabs)");
+  };
+
+  // Apple guideline 4.8 — must be available on iOS since we offer Google sign-in.
+  const handleApple = async (input: { identityToken: string; fullName?: string }) => {
+    setError(null);
+    setLoading(true);
+    try {
+      await appleSignIn(input);
+      await refresh();
+      router.replace("/(tabs)");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Apple sign-in failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -135,7 +151,7 @@ export default function SignupScreen() {
             onPress={handleSubmit}
           />
 
-          {google.enabled && (
+          {(google.enabled || Platform.OS === "ios") && (
             <>
               <View className="my-2 flex-row items-center gap-3">
                 <View className="h-px flex-1 bg-slate-200" />
@@ -145,12 +161,17 @@ export default function SignupScreen() {
                 <View className="h-px flex-1 bg-slate-200" />
               </View>
 
-              <GoogleButton
-                onPress={handleGoogle}
-                loading={google.inFlight}
-                disabled={!google.ready}
-                label="Sign up with Google"
-              />
+              {/* Apple first on iOS per guideline 4.8 ("at least as prominent"). */}
+              <AppleButton onSuccess={handleApple} onError={setError} disabled={loading} />
+
+              {google.enabled && (
+                <GoogleButton
+                  onPress={handleGoogle}
+                  loading={google.inFlight}
+                  disabled={!google.ready}
+                  label="Sign up with Google"
+                />
+              )}
             </>
           )}
         </View>

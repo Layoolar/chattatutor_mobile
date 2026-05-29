@@ -43,32 +43,32 @@ schedules a backend deletion job.
 - [ ] 🟡 If subscription is active, surface "Your subscription will be cancelled and you will not be charged again. Access ends at the current billing period." before delete fires.
 - [ ] 🟢 Web equivalent at [chattatutor_frontend/app/settings/page.tsx](../chattatutor_frontend/app/settings/page.tsx) for parity (Apple won't reject for missing web flow, but inconsistency is awkward).
 
-### 1.3 In-App Purchase policy decision — biggest unresolved risk
+### 1.3 In-App Purchase policy — decision locked: "Submit with current upsell, prepare for IAP V1.2"
 
-Apple guideline **3.1.1** requires StoreKit IAP for "unlocking features or functionality within
-your app." We currently route mobile users to `https://chattatutor.com/pricing?from=app` and
-collect via Flutterwave on web. This is borderline-rejection territory.
+**Decision:** Submit V1 with the existing in-app upgrade buttons intact on iOS. **Do NOT** strip
+the upsell. We accept the App Review rejection risk and plan to ship StoreKit IAP as the V1.2
+hotfix if Apple flags it.
 
-Two acceptable paths exist:
+**Rationale:** Going to market with the same UX on iOS and Android beats a stripped-down iOS
+binary. Apple's enforcement of 3.1.1 against subscription-based learning apps that route to web
+is inconsistent — some pass, some don't. We take the bet, and have a clean fallback ready.
 
-#### Path A — Strip in-app upsell on iOS (lowest risk)
-- [ ] 🔴 On iOS, hide all "Upgrade", "Subscribe", "Try Premium" buttons in the binary
-- [ ] 🔴 Hide the entire `<SubscribePromptBanner>` on iOS
-- [ ] 🔴 Hide `<FeatureLockSheet>` "See Premium" CTA on iOS — replace with "This feature requires a paid plan. Sign in on chattatutor.com to upgrade."
-- [ ] 🔴 No price displays anywhere in the iOS binary (cards, hub rows, etc.) — strip "$9.99 / month" copy
-- [ ] 🟡 Android can keep the existing upsell — Google permits external payment in many cases
-- [ ] 🔴 App Review notes must declare: "This app is part of a multi-platform educational service. Subscriptions are purchased on the web. The iOS app provides core functionality at no charge and serves paying subscribers."
+**Pre-work (do before V1 submit so the V1.2 implementation is one short sprint, not weeks):**
 
-#### Path B — Add StoreKit IAP for iOS (highest risk, biggest effort)
-- [ ] 🟡 Configure StoreKit products in App Store Connect (monthly Pro, monthly Premium)
-- [ ] 🟡 Add `react-native-iap` or `expo-in-app-purchases` (note: deprecated; use `react-native-iap`)
-- [ ] 🟡 Add backend `/iap/verify` endpoint that validates Apple receipts and provisions the same `subscriptionEndsAt` / token flow we built for Flutterwave
-- [ ] 🟡 Handle Apple's restore-purchases requirement
-- [ ] 🟡 Add cancellation deep-link (Apple manages cancellations in their UI; surface a link to the user's subscriptions page)
+- [ ] 🟡 Apple Developer account has "Capabilities" enabled for In-App Purchase
+- [ ] 🟡 App Store Connect: create the two subscription products in advance (don't activate; they sit in "Ready to Submit" state)
+  - `com.chattatutor.mobile.pro.monthly` — $4.99/mo, "Pro"
+  - `com.chattatutor.mobile.premium.monthly` — $9.99/mo, "Premium"
+  - Both in the same subscription group so upgrade/downgrade works via Apple's built-in proration
+- [ ] 🟡 Apple App Store Server Notifications V2 — register a production webhook URL (e.g., `https://api.chattatutor.com/iap/apple-webhook`) so the backend is ready to receive renewal / cancellation events
+- [ ] 🟡 App Review notes pre-written for the V1 submission: "ChattaTutor is a multi-platform learning service. Subscriptions are managed via our website. We are evaluating StoreKit IAP for an upcoming release. The iOS binary provides full functionality to paying subscribers signed in here; account creation and free-tier study are free."
 
-**Decision required before submission.** Recommended: **Path A** for V1. Adds IAP in V1.1 once we
-have App Store presence and traction. Path B requires receipt validation, refund handling, and
-double-billing protection against existing Flutterwave subscribers.
+**If Apple rejects the V1 submission:**
+
+The full V1.2 IAP implementation lives in ROADMAP §"Phase 9 — StoreKit IAP integration." Detailed
+plan covers receipt verification, restore purchases, Flutterwave / IAP reconciliation, refund
+handling, and the iOS UI work. Estimated 5–7 working days from rejection notification to
+resubmission-ready binary.
 
 ### 1.4 Production environment configuration
 

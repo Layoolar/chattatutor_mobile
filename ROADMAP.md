@@ -1142,3 +1142,74 @@ Two consistent signals, every time: **why** ("lock + plan badge") and **how** ("
 #### Definition of done
 
 A free user tapping any premium-only control on mobile opens the same `<FeatureLockSheet>`. Every locked control has a visible lock-or-crown indicator at rest. No silent disables, no one-off paywalls outside the audited list, no toast-only denials.
+
+### Phase 9 — StoreKit IAP integration (V1.2 hotfix, planned)
+
+> Triggered by: App Store Review flags Apple guideline 3.1.1 ("digital subscriptions must use IAP")
+> on the V1 submission. We ship V1 with the existing external-checkout pattern, accept that risk,
+> and have this implementation pre-staged so the rejection-to-resubmit cycle is 5–7 working days,
+> not 2–3 weeks.
+>
+> Audited 2026-05-29. All call sites that need to change are listed below — no archaeology required.
+
+#### Pre-staged work (do before V1 submit so V1.2 is a sprint, not a project)
+
+- [ ] App Store Connect — create the subscription products in "Ready to Submit" state (not active):
+  - `com.chattatutor.mobile.pro.monthly` — $4.99/mo, "Pro Plan"
+  - `com.chattatutor.mobile.premium.monthly` — $9.99/mo, "Premium Plan"
+  - Both products live in the **same subscription group** (e.g., `chattatutor_main`) so Apple's built-in proration/upgrade/downgrade between Pro and Premium works without us writing proration code on iOS.
+- [ ] App Store Connect — App Store Server Notifications V2:
+  - Production endpoint: `https://api.chattatutor.com/api/iap/apple-webhook`
+  - Sandbox endpoint: `https://api.chattatutor.com/api/iap/apple-webhook` (we'll branch on `signedPayload.environment`)
+  - Configure once; backend implementation lands in the IAP sprint
+- [ ] Apple Developer — confirm "In-App Purchase" capability is enabled on the app ID
+- [ ] App Review notes pre-written for the V1 submission, ready to copy-paste into App Store Connect (see LAUNCH_PLAN §1.3)
+
+#### V1.2 implementation — backend
+
+- [ ] Install `app-store-server-api` (Apple's official Node SDK for receipt verification)
+- [ ] Add `appleOriginalTransactionId String?` field to User schema — primary key for matching IAP subscribers across renewals
+- [ ] Add `appleProductId String?` field — last-active product ID for entitlement lookup
+- [ ] `POST /api/iap/verify` — accepts a JWS signedTransaction from the client, verifies via Apple's API, provisions the same `plan` + `subscriptionStatus` + `subscriptionEndsAt` flow we built for Flutterwave
+- [ ] `POST /api/iap/apple-webhook` — handles ASSN V2 events:
+  - `SUBSCRIBED` / `DID_RENEW` → extend subscriptionEndsAt
+  - `DID_FAIL_TO_RENEW` → mark past_due
+  - `EXPIRED` → downgrade to free (via existing cron)
+  - `REFUND` → revert plan + log incident
+- [ ] Reconciliation rule (CRITICAL): a user with BOTH a Flutterwave (web) AND an IAP (iOS) active subscription gets credited the longer remaining window; the system never double-charges. Implementation: in `verifySubscription`, prefer whichever `subscriptionEndsAt` is later; do not run the Flutterwave renewal cron for users whose `appleOriginalTransactionId` is set and active.
+- [ ] Rate-limit /iap/verify to prevent receipt-replay abuse
+
+#### V1.2 implementation — mobile
+
+- [ ] `npx expo install react-native-iap`
+- [ ] Add `lib/iap.ts`:
+  - `getProducts()` returns the two subscription SKUs
+  - `purchaseSubscription(productId)` initiates the StoreKit flow + posts the signed transaction to `/api/iap/verify`
+  - `restorePurchases()` calls Apple's `getAvailablePurchases()` and posts each to verify
+- [ ] On iOS, swap the existing `checkoutFlutterwave()` call sites for `purchaseSubscription()`:
+  - [components/premium-checkout-modal.tsx](components/premium-checkout-modal.tsx)
+  - [components/flutterwave-subscription.tsx](components/flutterwave-subscription.tsx) (web-only after this; rename to flutterwave-web-subscription)
+  - [components/pricing-modal.tsx](components/pricing-modal.tsx)
+  - [components/pricing-plan-button.tsx](components/pricing-plan-button.tsx)
+  - [app/(tabs)/profile.tsx](app/(tabs)/profile.tsx) — `handleDowngradeToPro`, `handleKeepCurrentPlan`
+- [ ] Restore Purchases button on Settings → Subscription card (Apple requirement, guideline 3.1.1)
+- [ ] Deep-link "Manage subscription" to `https://apps.apple.com/account/subscriptions` (Apple manages cancellations, we just link)
+- [ ] On Android: leave the Flutterwave web flow unchanged. Google Play permits external payment for "out-of-app digital content" sold by the same developer in many cases — revisit if Google flags it.
+
+#### V1.2 implementation — Profile / Settings UX
+
+- [ ] Show payment provider source-of-truth: "Subscription via App Store" vs "Subscription via Web" vs "Subscription via Stripe"
+- [ ] Hide the Settings "Downgrade to Pro" / "Cancel" buttons for IAP users — Apple manages those. Replace with a "Manage on App Store" link.
+- [ ] Pricing modal — on iOS, the buy button reads "Subscribe via App Store"; on Android/web it stays "Subscribe"
+
+#### Out of scope V1.2
+
+- Google Play Billing on Android — adds the same complexity. Defer until Google specifically asks or we want feature parity.
+- Promo codes — Apple supports them but they require additional App Store Connect setup
+- Family Sharing for subscriptions
+- Offer codes / introductory pricing
+- Cross-grade refund computation between IAP and Flutterwave (we accept the longer window; refund accounting happens on whichever side issued the refund)
+
+#### Definition of done
+
+iOS users complete subscriptions entirely inside the app via Apple's StoreKit UI. Web/Android users continue with Flutterwave unchanged. Backend correctly reconciles a user who paid both ways. App Review accepts the resubmission.
