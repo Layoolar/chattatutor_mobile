@@ -1090,3 +1090,55 @@ These were previously marked as gaps but are actually working. Listed here for t
 - [x] **Hive challenge leaderboard** — rendered on the hive detail screen below the progress leaderboard (`app/hives/[teamId].tsx`)
 - [x] **Daily drill** — surfaces decayed lessons as drill questions (`app/daily-drill.tsx`)
 - [x] **Passport** — tiered completed-course list (`app/passport.tsx`), parity with web
+
+### Phase 5.6 — Premium gate UX (mobile lock icon → upgrade sheet)
+
+> The non-invasive subscribe prompts (Home banner, token-cap nudge, trial-ending,
+> per-feature paywall sheet) and the env-driven Flutterwave redirect + downgrade
+> + cancel flows all shipped in the previous monetization pass. What did not
+> ship: making every "you can't use this" moment route through the same upgrade
+> sheet. Mobile still has three inconsistent gating patterns; web already
+> standardised on one. This phase closes the gap.
+
+#### What the frontend already does (the pattern to copy)
+
+Web pattern lives in [`components/learning-preferences.tsx`](../chattatutor_frontend/components/learning-preferences.tsx):
+
+1. **Visible at rest** — every locked option renders a `<Lock>` icon (and/or a `<Crown>` + "Premium" pill) so the user knows it's gated before they even tap.
+2. **Inline explainer** — above the locked controls, a violet/indigo banner: "Unlock X" + 2-line description + "Upgrade to Premium" button.
+3. **Tap routes to the modal** — clicking a disabled control *or* the explainer button opens `<PricingModal>`. From there the user enters checkout.
+
+Two consistent signals, every time: **why** ("lock + plan badge") and **how** ("tap → modal that routes to checkout"). No silent toasts, no dead taps.
+
+#### What mobile does today (the three inconsistent gates)
+
+| File | Current gating | Problem |
+|---|---|---|
+| `components/CourseCustomizationCard.tsx` | `toast.info("Course customization is available on Premium.")` | Quiet; CTA disappears in 2s; no path to upgrade. |
+| `app/topic-course.tsx`, `app/upload.tsx` | Silently strips `createVisual` and `learningPreferences` before submitting (`hasPremiumAccess ? preferences : undefined`). | Free user sees a toggle that does nothing on tap. No feedback at all. |
+| `app/league.tsx` | One-off custom paywall: gradient `<Crown>` icon + "See plans in Profile" `<Pressable>`. | Functionally fine, but every premium-only screen would need its own version. Inconsistent. |
+
+#### Tasks
+
+- [ ] **CourseCustomizationCard** — replace `toast.info(...)` in `updateSelect`, `updateToggle`, `toggleVisuals` with `setLockOpen(true)`. Render `<FeatureLockSheet visible={lockOpen} featureName="Course customization" description="Personalise tone, depth, lesson length, and visuals for every course." onClose={() => setLockOpen(false)} />` at the end of the JSX. Also render a `<Lock size={12}>` on each disabled chip/toggle so the gating is visible at rest, not only on tap.
+- [ ] **topic-course.tsx + upload.tsx** — the CourseCustomizationCard fix covers the toggles themselves. Verify these parents don't have additional silent strips (`hasPremiumAccess ? X : undefined`) that hide premium options without explaining; if found, surface the sheet there too.
+- [ ] **league.tsx** — replace the custom paywall block ([league.tsx:196-225](app/league.tsx#L196-L225)) with `<FeatureLockSheet visible={lockOpen} featureName="Weekly Leagues" description="Compete in your tier against learners with similar mastery. Top promote, bottom relegate, weekly reset." onClose={() => setLockOpen(false)} />`. Either show the sheet immediately on screen entry for free users, or render a slim locked-feature card with the sheet behind the tap (decide based on whether the screen has anything else to render for free users).
+- [ ] **Audit pass** — `git grep -nE "hasPremiumFeatureAccess|hasPremiumAccess|user\??\.plan ===" chattatutor_mobile/app chattatutor_mobile/components` and for each hit, confirm: locked control has a `<Lock>` icon at rest, and tapping it opens `<FeatureLockSheet>` (not a toast, not nothing). Add to the table above as you find new sites.
+- [ ] **No silent disables** — if a control would be visually identical to its enabled state but do nothing on tap, that's a regression. Either show it disabled-with-lock or route the tap to the sheet.
+
+#### Visual rules
+
+- Locked controls show a `<Lock>` from `lucide-react-native` (12–16px, slate-400) **or** a "Premium" pill, never both. Pick per control density.
+- Tapping a locked control opens `<FeatureLockSheet>` with a `featureName` and `description` specific to that feature ("Course customization", not "Premium features").
+- The sheet's CTA already routes via `router.push({ pathname: "/(tabs)/profile", params: { openPricing: "1" } })` — Profile auto-opens the pricing sheet, which then opens `chattatutor.com/pricing?from=app` in the system browser. Do not bypass this chain; consistency is the whole point.
+- Toasts are fine for **positive confirmation** ("Saved", "Course generated"). They are not a substitute for the sheet on a **denied action**.
+
+#### Out of scope
+
+- New gating logic. The guards (`hasPremiumFeatureAccess`, `pendingPlan` checks) stay as they are; only the UI when those guards fire changes.
+- Backend changes.
+- Replacing the Home / Lessons banner with the sheet — those are passive nudges, the sheet is intent-triggered. Different surface, same destination.
+
+#### Definition of done
+
+A free user tapping any premium-only control on mobile opens the same `<FeatureLockSheet>`. Every locked control has a visible lock-or-crown indicator at rest. No silent disables, no one-off paywalls outside the audited list, no toast-only denials.
