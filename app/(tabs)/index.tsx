@@ -23,6 +23,7 @@ import { KnowmadRankBadge } from "@/components/KnowmadRankBadge";
 import { StreakShieldCard } from "@/components/StreakShieldCard";
 import { DidYouKnow } from "@/components/DidYouKnow";
 import { RivalEventsBanner } from "@/components/RivalEventsBanner";
+import { SubscribePromptBanner } from "@/components/SubscribePromptBanner";
 import { useAuth } from "@/lib/auth-context";
 import { hasPremiumFeatureAccess } from "@/lib/premium-access";
 import { useToast } from "@/lib/toast";
@@ -31,6 +32,7 @@ import {
   getWeakConcepts,
   getUserInvitations,
   getMyPDFs,
+  getUserTokens,
   rejectInvitation,
   getUserActivity,
   getUserRank,
@@ -38,6 +40,7 @@ import {
   type PassportCourse,
   type PDF,
   type TeamInvitationWithTeam,
+  type TokenUsageData,
   type UserActivity,
   type UserRank,
   type WeakConcept,
@@ -65,11 +68,12 @@ export default function DashboardHome() {
   const [weakConceptsMessage, setWeakConceptsMessage] = useState<string | null>(null);
   const [pendingInvitations, setPendingInvitations] = useState<TeamInvitationWithTeam[]>([]);
   const [inviteActionCode, setInviteActionCode] = useState<string | null>(null);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [a, r, plansResult, pdfsResult, weakConceptsResult, invitationsResult] = await Promise.allSettled([
+    const [a, r, plansResult, pdfsResult, weakConceptsResult, invitationsResult, tokensResult] = await Promise.allSettled([
       getUserActivity(),
       getUserRank(),
       getUserStudyPlans(),
@@ -78,10 +82,12 @@ export default function DashboardHome() {
         ? getWeakConcepts()
         : Promise.resolve({ weakConcepts: [] as WeakConcept[], message: undefined }),
       getUserInvitations(),
+      getUserTokens(),
     ]);
 
     if (a.status === "fulfilled") setActivity(a.value);
     if (r.status === "fulfilled") setRank(r.value);
+    if (tokensResult.status === "fulfilled") setTokenUsage(tokensResult.value);
 
     // Stitch courses: prefer PassportCourse data; fall back to bare PDFs.
     const plans: PassportCourse[] =
@@ -226,6 +232,8 @@ export default function DashboardHome() {
             : "Upload a PDF or start from a topic to build a fresh learning streak."}
         </Text>
       </View>
+
+      <SubscribePromptBanner user={user} tokenUsagePercent={tokenUsage?.usagePercentage} />
 
       {loading ? (
         <View className="gap-4">

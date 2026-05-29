@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Crown, Sparkles } from "lucide-react-native";
+import { Crown, Lock, Sparkles } from "lucide-react-native";
 import {
   getCustomizationOptions,
   type CustomizationOptions,
   type LearningPreferences,
 } from "@/lib/api";
-import { useToast } from "@/lib/toast";
+import { FeatureLockSheet } from "@/components/FeatureLockSheet";
 
 const FALLBACK_OPTIONS: CustomizationOptions = {
   toneStyles: [
@@ -179,8 +179,8 @@ export function CourseCustomizationCard({
   numLessons,
   onNumLessonsChange,
 }: CourseCustomizationCardProps) {
-  const toast = useToast();
   const [options, setOptions] = useState<CustomizationOptions>(FALLBACK_OPTIONS);
+  const [lockOpen, setLockOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -198,13 +198,11 @@ export function CourseCustomizationCard({
     };
   }, []);
 
-  const showPremiumToast = () => {
-    toast.info("Course customization is available on Premium.");
-  };
-
+  // Free users: every customisation tap surfaces the upgrade sheet instead of silently
+  // failing. Lock icons on the controls themselves make the gate visible at rest.
   const updateSelect = (key: SelectPreferenceKey, value: string) => {
     if (!hasPremiumAccess) {
-      showPremiumToast();
+      setLockOpen(true);
       return;
     }
 
@@ -213,7 +211,7 @@ export function CourseCustomizationCard({
 
   const updateToggle = (key: TogglePreferenceKey) => {
     if (!hasPremiumAccess) {
-      showPremiumToast();
+      setLockOpen(true);
       return;
     }
 
@@ -225,7 +223,7 @@ export function CourseCustomizationCard({
 
   const toggleVisuals = () => {
     if (!hasPremiumAccess) {
-      showPremiumToast();
+      setLockOpen(true);
       return;
     }
 
@@ -320,18 +318,21 @@ export function CourseCustomizationCard({
               Generate lesson visuals and diagram-ready explanations when your plan allows it.
             </Text>
           </View>
-          <Pressable
-            onPress={toggleVisuals}
-            className={`h-7 w-12 rounded-full px-1 justify-center ${
-              hasPremiumAccess && createVisual ? "bg-indigo-600" : "bg-slate-200"
-            }`}
-          >
-            <View
-              className={`h-5 w-5 rounded-full bg-white ${
-                hasPremiumAccess && createVisual ? "self-end" : "self-start"
+          <View className="flex-row items-center gap-2">
+            {!hasPremiumAccess && <Lock size={14} color="#94a3b8" />}
+            <Pressable
+              onPress={toggleVisuals}
+              className={`h-7 w-12 rounded-full px-1 justify-center ${
+                hasPremiumAccess && createVisual ? "bg-indigo-600" : "bg-slate-200"
               }`}
-            />
-          </Pressable>
+            >
+              <View
+                className={`h-5 w-5 rounded-full bg-white ${
+                  hasPremiumAccess && createVisual ? "self-end" : "self-start"
+                }`}
+              />
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -357,6 +358,13 @@ export function CourseCustomizationCard({
         selectedValue={preferences.learningMode}
         onSelect={(value) => updateSelect("learningMode", value)}
         hasPremiumAccess={hasPremiumAccess}
+      />
+
+      <FeatureLockSheet
+        visible={lockOpen}
+        featureName="Course customization"
+        description="Personalise tone, depth, learning mode, and visuals for every course you generate."
+        onClose={() => setLockOpen(false)}
       />
 
       <View className="gap-2">
@@ -389,16 +397,19 @@ export function CourseCustomizationCard({
                       </Text>
                     </View>
                   </View>
-                  <View
-                    className={`h-6 w-10 rounded-full px-1 justify-center ${
-                      enabled ? "bg-indigo-600" : "bg-slate-300"
-                    }`}
-                  >
+                  <View className="flex-row items-center gap-2">
+                    {!hasPremiumAccess && <Lock size={12} color="#94a3b8" />}
                     <View
-                      className={`h-4 w-4 rounded-full bg-white ${
-                        enabled ? "self-end" : "self-start"
+                      className={`h-6 w-10 rounded-full px-1 justify-center ${
+                        enabled ? "bg-indigo-600" : "bg-slate-300"
                       }`}
-                    />
+                    >
+                      <View
+                        className={`h-4 w-4 rounded-full bg-white ${
+                          enabled ? "self-end" : "self-start"
+                        }`}
+                      />
+                    </View>
                   </View>
                 </View>
               </Pressable>
@@ -446,7 +457,10 @@ function PreferenceSection({
                   : "border-slate-200 bg-slate-50 active:bg-slate-100"
               } ${!hasPremiumAccess ? "opacity-75" : ""}`}
             >
-              <Text className="text-lg">{option.icon}</Text>
+              <View className="flex-row items-start justify-between">
+                <Text className="text-lg">{option.icon}</Text>
+                {!hasPremiumAccess && <Lock size={12} color="#94a3b8" />}
+              </View>
               <Text className="mt-2 text-sm font-semibold text-slate-900">
                 {option.label}
               </Text>

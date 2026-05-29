@@ -17,6 +17,7 @@ export interface User {
   paymentProvider?: "stripe" | "flutterwave" | null;
   subscriptionStatus?: "active" | "canceled" | "past_due" | "trialing" | "expired" | null;
   subscriptionEndsAt?: string | null;
+  pendingPlan?: "pro" | "premium" | null;
   authProvider?: string;
   lastCourseGeneratedAt?: string | null;
   createdAt?: string;

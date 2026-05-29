@@ -211,12 +211,17 @@ export default function LeagueScreen() {
               promote, bottom relegate, weekly reset.
             </Text>
             <Pressable
-              onPress={() => router.push("/profile")}
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/profile",
+                  params: { openPricing: "1", from: "league" },
+                })
+              }
               className="h-12 px-8 rounded-full bg-slate-900 active:bg-slate-800 flex-row items-center"
             >
               <Crown size={16} color="#ffffff" />
               <Text className="ml-2 text-sm font-semibold text-white">
-                See plans in Profile
+                See Premium
               </Text>
             </Pressable>
             <Pressable
