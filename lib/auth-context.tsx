@@ -8,6 +8,7 @@ import {
 } from "./auth";
 import { onUnauthorized } from "./fetch";
 import { unregisterStoredPushDeviceAsync } from "./push-notifications";
+import { configureIAP, loginIAP, logoutIAP } from "./iap";
 
 interface AuthContextValue {
   user: User | null;
@@ -26,10 +27,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadAuthToken();
     const current = await getCurrentUser();
     setUser(current);
+    // Keep RevenueCat's app_user_id in sync with our backend user id so the
+    // RC webhook's payload.event.app_user_id maps cleanly to our User.id.
+    if (current?.id) {
+      await loginIAP(current.id).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
+      // Configure RC once at app start; userId may be unknown here (cold start
+      // before token loads). `refresh` will follow up with loginIAP once we
+      // have an authenticated user.
+      await configureIAP().catch(() => {});
       await refresh();
       setLoading(false);
     })();
@@ -37,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await unregisterStoredPushDeviceAsync().catch(() => {});
+    await logoutIAP().catch(() => {});
     await logoutHelper();
     setUser(null);
   }, []);

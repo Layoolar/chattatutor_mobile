@@ -3,7 +3,7 @@
 > Goal: rebuild the ChattaTutor web app as a native mobile app. Keep the brand
 > and the feature catalog, but adapt every surface to mobile-native patterns —
 > we are not shrinking the website.
-
+https://app.revenuecat.com/projects/57df889e/new-app/app_store
 ---
 
 ## North-star principles
@@ -1143,73 +1143,77 @@ Two consistent signals, every time: **why** ("lock + plan badge") and **how** ("
 
 A free user tapping any premium-only control on mobile opens the same `<FeatureLockSheet>`. Every locked control has a visible lock-or-crown indicator at rest. No silent disables, no one-off paywalls outside the audited list, no toast-only denials.
 
-### Phase 9 — StoreKit IAP integration (V1.2 hotfix, planned)
+### Phase 9 — RevenueCat IAP integration (V1, in progress)
 
-> Triggered by: App Store Review flags Apple guideline 3.1.1 ("digital subscriptions must use IAP")
-> on the V1 submission. We ship V1 with the existing external-checkout pattern, accept that risk,
-> and have this implementation pre-staged so the rejection-to-resubmit cycle is 5–7 working days,
-> not 2–3 weeks.
->
-> Audited 2026-05-29. All call sites that need to change are listed below — no archaeology required.
+> **Decision change (2026-05-29):** ship V1 with real StoreKit subscriptions via RevenueCat
+> instead of risking Apple rejection. RevenueCat wraps StoreKit + Google Play Billing in a
+> unified API and absorbs receipt verification, ASSN V2, refunds, family sharing, billing retries.
+> Adds ~3.5 working days to V1 vs ~5–7 days for raw StoreKit; eliminates Apple 3.1.1 rejection risk.
 
-#### Pre-staged work (do before V1 submit so V1.2 is a sprint, not a project)
+#### External dashboard setup (you do these; code waits on them)
 
-- [ ] App Store Connect — create the subscription products in "Ready to Submit" state (not active):
-  - `com.chattatutor.mobile.pro.monthly` — $4.99/mo, "Pro Plan"
-  - `com.chattatutor.mobile.premium.monthly` — $9.99/mo, "Premium Plan"
-  - Both products live in the **same subscription group** (e.g., `chattatutor_main`) so Apple's built-in proration/upgrade/downgrade between Pro and Premium works without us writing proration code on iOS.
-- [ ] App Store Connect — App Store Server Notifications V2:
-  - Production endpoint: `https://api.chattatutor.com/api/iap/apple-webhook`
-  - Sandbox endpoint: `https://api.chattatutor.com/api/iap/apple-webhook` (we'll branch on `signedPayload.environment`)
-  - Configure once; backend implementation lands in the IAP sprint
-- [ ] Apple Developer — confirm "In-App Purchase" capability is enabled on the app ID
-- [ ] App Review notes pre-written for the V1 submission, ready to copy-paste into App Store Connect (see LAUNCH_PLAN §1.3)
+See LAUNCH_PLAN §1.3 for the full checklist. Summary: App Store Connect products + API key, Apple Developer capability, RevenueCat project + entitlements + offerings + webhook secret.
 
-#### V1.2 implementation — backend
+#### Schema additions
 
-- [ ] Install `app-store-server-api` (Apple's official Node SDK for receipt verification)
-- [ ] Add `appleOriginalTransactionId String?` field to User schema — primary key for matching IAP subscribers across renewals
-- [ ] Add `appleProductId String?` field — last-active product ID for entitlement lookup
-- [ ] `POST /api/iap/verify` — accepts a JWS signedTransaction from the client, verifies via Apple's API, provisions the same `plan` + `subscriptionStatus` + `subscriptionEndsAt` flow we built for Flutterwave
-- [ ] `POST /api/iap/apple-webhook` — handles ASSN V2 events:
-  - `SUBSCRIBED` / `DID_RENEW` → extend subscriptionEndsAt
-  - `DID_FAIL_TO_RENEW` → mark past_due
-  - `EXPIRED` → downgrade to free (via existing cron)
-  - `REFUND` → revert plan + log incident
-- [ ] Reconciliation rule (CRITICAL): a user with BOTH a Flutterwave (web) AND an IAP (iOS) active subscription gets credited the longer remaining window; the system never double-charges. Implementation: in `verifySubscription`, prefer whichever `subscriptionEndsAt` is later; do not run the Flutterwave renewal cron for users whose `appleOriginalTransactionId` is set and active.
-- [ ] Rate-limit /iap/verify to prevent receipt-replay abuse
+- [ ] Add `revenueCatUserId String?` to User — RevenueCat's anonymous-or-app-user-id (we identify with our `userId` so this should always equal `user.id`, but we store it for audit and to detect mismatch)
+- [ ] Add `revenueCatProductId String?` to User — last-active SKU (`com.chattatutor.mobile.pro.monthly` or `.premium.monthly`)
+- [ ] Add `revenueCatOriginalTransactionId String?` to User — Apple's stable identifier across renewals; primary key for matching across events
 
-#### V1.2 implementation — mobile
+#### Backend
 
-- [ ] `npx expo install react-native-iap`
-- [ ] Add `lib/iap.ts`:
-  - `getProducts()` returns the two subscription SKUs
-  - `purchaseSubscription(productId)` initiates the StoreKit flow + posts the signed transaction to `/api/iap/verify`
-  - `restorePurchases()` calls Apple's `getAvailablePurchases()` and posts each to verify
-- [ ] On iOS, swap the existing `checkoutFlutterwave()` call sites for `purchaseSubscription()`:
+- [ ] `POST /api/iap/revenuecat-webhook` — receives JSON events from RevenueCat. Verify the `Authorization` header against `REVENUECAT_WEBHOOK_AUTH_HEADER` env. Handle these event types:
+  - `INITIAL_PURCHASE` — set plan, subscriptionStatus='active', subscriptionEndsAt, paymentProvider='revenuecat'
+  - `RENEWAL` — extend subscriptionEndsAt
+  - `PRODUCT_CHANGE` — Apple's built-in upgrade/downgrade — update plan to match new SKU's entitlement
+  - `CANCELLATION` — mark subscriptionStatus='canceled' (Apple keeps access until expiration; our cron handles cycle-end)
+  - `EXPIRATION` — set subscriptionStatus='expired'; cron handles plan downgrade
+  - `BILLING_ISSUE` — mark subscriptionStatus='past_due'
+  - `SUBSCRIBER_ALIAS` — RC merges anonymous + identified user; reconcile by app_user_id
+  - `TRANSFER` — handle "Family Sharing" or device-transfer events (rare)
+  - `REFUND` — revert plan + log incident
+- [ ] Map `app_user_id` from RC payload → our `User.id` (we identify on login, so they match)
+- [ ] Reconciliation rule (CRITICAL): in `getEffectivePlan`, if user has both a Flutterwave-active and a RevenueCat-active subscription, use the **later** `subscriptionEndsAt`. Do NOT run the Flutterwave renewal cron for users with an active RevenueCat sub. Encode this in [subscriptionExpiryService.ts](src/services/subscriptionExpiryService.ts) — skip if `paymentProvider === 'revenuecat'`.
+- [ ] Idempotency — RC sometimes retries webhooks. Store the `event.id` in transactions, dedupe.
+
+#### Mobile
+
+- [ ] `npx expo install react-native-purchases react-native-purchases-ui`
+- [ ] `lib/iap.ts`:
+  - `configureIAP()` — call once at app start; sets API key from `EXPO_PUBLIC_REVENUECAT_IOS_KEY`, identifies with `Purchases.logIn(userId)` after auth
+  - `getOfferings()` — returns the configured offering
+  - `purchasePackage(pkg)` — initiates the StoreKit flow via RC, handles user-cancel as no-op
+  - `restorePurchases()` — RC's `restorePurchases()` then `getCustomerInfo()` to update entitlements
+  - `useEntitlements()` hook — wraps `Purchases.addCustomerInfoUpdateListener`; returns `{ proActive, premiumActive }`
+- [ ] On login (lib/auth post-success): call `Purchases.logIn(user.id)` so RC knows who's buying
+- [ ] On logout: `Purchases.logOut()`
+- [ ] On iOS only, swap the 4 checkout call sites from `checkoutFlutterwave()` to `purchasePackage()`:
   - [components/premium-checkout-modal.tsx](components/premium-checkout-modal.tsx)
-  - [components/flutterwave-subscription.tsx](components/flutterwave-subscription.tsx) (web-only after this; rename to flutterwave-web-subscription)
   - [components/pricing-modal.tsx](components/pricing-modal.tsx)
   - [components/pricing-plan-button.tsx](components/pricing-plan-button.tsx)
   - [app/(tabs)/profile.tsx](app/(tabs)/profile.tsx) — `handleDowngradeToPro`, `handleKeepCurrentPlan`
-- [ ] Restore Purchases button on Settings → Subscription card (Apple requirement, guideline 3.1.1)
-- [ ] Deep-link "Manage subscription" to `https://apps.apple.com/account/subscriptions` (Apple manages cancellations, we just link)
-- [ ] On Android: leave the Flutterwave web flow unchanged. Google Play permits external payment for "out-of-app digital content" sold by the same developer in many cases — revisit if Google flags it.
+- [ ] Restore Purchases button in Settings → Subscription (Apple requirement)
+- [ ] On iOS for active IAP subs: hide "Cancel subscription" + "Downgrade to Pro" in Settings, replace with "Manage on App Store" link to `https://apps.apple.com/account/subscriptions`
+- [ ] Pricing modal label on iOS: "Subscribe via App Store" (instead of "Subscribe")
+- [ ] **Android stays on Flutterwave for V1** — do not touch the Android paths
 
-#### V1.2 implementation — Profile / Settings UX
+#### Testing
 
-- [ ] Show payment provider source-of-truth: "Subscription via App Store" vs "Subscription via Web" vs "Subscription via Stripe"
-- [ ] Hide the Settings "Downgrade to Pro" / "Cancel" buttons for IAP users — Apple manages those. Replace with a "Manage on App Store" link.
-- [ ] Pricing modal — on iOS, the buy button reads "Subscribe via App Store"; on Android/web it stays "Subscribe"
+- [ ] App Store Connect → Users & Access → Sandbox testers — create a sandbox account (don't use real Apple ID)
+- [ ] Real-device test on TestFlight: subscribe → see entitlement update → app routes to premium UI → backend gets the webhook → user record reflects new plan
+- [ ] Test upgrade Pro → Premium via Apple's built-in flow (PRODUCT_CHANGE event)
+- [ ] Test cancel via App Store (CANCELLATION event)
+- [ ] Test restore on a freshly-installed app (RESTORE / NON_RENEWING_PURCHASE event)
+- [ ] **Reconciliation test**: deliberately create a user with both an active Flutterwave web sub AND an IAP sub; confirm `getEffectivePlan` uses the later end date and the renewal cron skips them
 
-#### Out of scope V1.2
+#### Out of scope V1
 
-- Google Play Billing on Android — adds the same complexity. Defer until Google specifically asks or we want feature parity.
-- Promo codes — Apple supports them but they require additional App Store Connect setup
+- Google Play Billing on Android — V1.1 or later
+- Promo codes (Apple supports; needs App Store Connect setup)
 - Family Sharing for subscriptions
 - Offer codes / introductory pricing
-- Cross-grade refund computation between IAP and Flutterwave (we accept the longer window; refund accounting happens on whichever side issued the refund)
+- Cross-grade refund computation between IAP and Flutterwave (we accept the longer window; refund accounting happens on whichever side issued it)
 
 #### Definition of done
 
-iOS users complete subscriptions entirely inside the app via Apple's StoreKit UI. Web/Android users continue with Flutterwave unchanged. Backend correctly reconciles a user who paid both ways. App Review accepts the resubmission.
+iOS users subscribe entirely inside the app via Apple's StoreKit UI presented by RevenueCat. Web users continue with Flutterwave unchanged. Android stays on Flutterwave (V1.1 migrates). Backend correctly reconciles a user who paid both ways — they're never double-charged, they get the longer of the two subscriptions. App Store Review accepts the V1 submission with no IAP-related issues.

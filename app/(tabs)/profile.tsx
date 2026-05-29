@@ -56,6 +56,14 @@ import {
   unregisterStoredPushDeviceAsync,
 } from "@/lib/push-notifications";
 import { openWebAppFlow } from "@/lib/web-links";
+import {
+  APPLE_MANAGE_SUBSCRIPTIONS_URL,
+  getPackageForPlan,
+  purchasePackage,
+  restorePurchases,
+  useIAPEntitlements,
+} from "@/lib/iap";
+import * as Linking from "expo-linking";
 
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
 
@@ -526,6 +534,60 @@ export default function ProfileScreen() {
     }
   };
 
+  const iapEntitlements = useIAPEntitlements();
+
+  // On iOS, route subscriptions through RevenueCat / StoreKit (Apple guideline 3.1.1).
+  // On Android/web, keep the existing Flutterwave-on-web flow for V1.
+  const handleSubscribeOnIOS = async (plan: "pro" | "premium") => {
+    try {
+      setPaymentLoading(true);
+      const pkg = await getPackageForPlan(plan);
+      if (!pkg) {
+        toast.error("Subscription products aren't available right now. Try again in a moment.");
+        return;
+      }
+      const result = await purchasePackage(pkg);
+      if (result) {
+        // RC webhook will update the backend; refresh local user state so the UI reflects it.
+        await refresh();
+        setActiveSheet(null);
+        toast.success(`Welcome to ${plan === "premium" ? "Premium" : "Pro"} 🎉`);
+      }
+      // null result = user cancelled — silent.
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Purchase failed");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    try {
+      setPaymentLoading(true);
+      const info = await restorePurchases();
+      const restored =
+        info?.entitlements?.active?.premium_access || info?.entitlements?.active?.pro_access;
+      if (restored) {
+        await refresh();
+        toast.success("Purchases restored");
+      } else {
+        toast.info("No active purchases found on this Apple ID");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Restore failed");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleManageOnAppStore = async () => {
+    try {
+      await Linking.openURL(APPLE_MANAGE_SUBSCRIPTIONS_URL);
+    } catch {
+      toast.error("Couldn't open the App Store subscriptions page");
+    }
+  };
+
   const handleOpenBillingOnWeb = async () => {
     try {
       setPaymentLoading(true);
@@ -973,6 +1035,23 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          {/* iOS IAP subscribers manage cancel/downgrade in Apple's UI, not in-app
+              (Apple requires it). We surface a single "Manage on App Store" link instead. */}
+          {Platform.OS === "ios" && (iapEntitlements.proActive || iapEntitlements.premiumActive) && (
+            <View className="mt-2 rounded-3xl border border-slate-200 bg-white p-4 gap-2">
+              <Text className="text-sm font-bold text-slate-900">Manage subscription</Text>
+              <Text className="text-xs leading-5 text-slate-500">
+                Cancel, change plan, or update payment in Apple's Subscriptions settings.
+              </Text>
+              <Pressable
+                onPress={handleManageOnAppStore}
+                className="self-start rounded-full bg-slate-900 px-4 py-2 active:bg-slate-800"
+              >
+                <Text className="text-xs font-semibold text-white">Open App Store</Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* Danger zone — account deletion (Apple 5.1.1(v)) */}
           <View className="mt-4 mb-8 rounded-3xl border border-rose-200 bg-rose-50/40 p-4 gap-3">
             <View className="flex-row items-center gap-2">
@@ -1170,15 +1249,47 @@ export default function ProfileScreen() {
                   : "You are currently on the free plan."}
               </Text>
               <Text className="mt-2 text-sm leading-6 text-slate-500">
-                Upgrades and subscription changes are handled on chattatutor.com. When you are done, return to the app and refresh your profile.
+                {Platform.OS === "ios"
+                  ? "Subscriptions on iOS are managed by Apple. Tap Subscribe to start; manage or cancel anytime in App Store settings."
+                  : "Upgrades and subscription changes are handled on chattatutor.com. When you are done, return to the app and refresh your profile."}
               </Text>
             </View>
 
-            <Button
-              title={planName === "premium" ? "Manage subscription on web" : "Upgrade on web"}
-              loading={paymentLoading || cancelLoading}
-              onPress={handleOpenBillingOnWeb}
-            />
+            {Platform.OS === "ios" ? (
+              <>
+                {/* Active iOS IAP user — Apple owns this subscription. We can't cancel/downgrade
+                    from here; Apple requires it happen in their UI. */}
+                {iapEntitlements.proActive || iapEntitlements.premiumActive ? (
+                  <Button
+                    title="Manage on App Store"
+                    loading={paymentLoading}
+                    onPress={handleManageOnAppStore}
+                  />
+                ) : (
+                  <Button
+                    title="Subscribe via App Store"
+                    loading={paymentLoading}
+                    onPress={() => handleSubscribeOnIOS("premium")}
+                  />
+                )}
+                {/* Apple guideline 3.1.1 — Restore Purchases must be reachable. */}
+                <Pressable
+                  onPress={handleRestorePurchases}
+                  disabled={paymentLoading}
+                  className="self-center py-3"
+                >
+                  <Text className="text-sm font-medium text-slate-500 underline">
+                    Restore purchases
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <Button
+                title={planName === "premium" ? "Manage subscription on web" : "Upgrade on web"}
+                loading={paymentLoading || cancelLoading}
+                onPress={handleOpenBillingOnWeb}
+              />
+            )}
           </View>
         </View>
       </BottomSheet>

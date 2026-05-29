@@ -43,32 +43,50 @@ schedules a backend deletion job.
 - [ ] 🟡 If subscription is active, surface "Your subscription will be cancelled and you will not be charged again. Access ends at the current billing period." before delete fires.
 - [ ] 🟢 Web equivalent at [chattatutor_frontend/app/settings/page.tsx](../chattatutor_frontend/app/settings/page.tsx) for parity (Apple won't reject for missing web flow, but inconsistency is awkward).
 
-### 1.3 In-App Purchase policy — decision locked: "Submit with current upsell, prepare for IAP V1.2"
+### 1.3 In-App Purchase — decision locked: ship V1 with **RevenueCat IAP on iOS**
 
-**Decision:** Submit V1 with the existing in-app upgrade buttons intact on iOS. **Do NOT** strip
-the upsell. We accept the App Review rejection risk and plan to ship StoreKit IAP as the V1.2
-hotfix if Apple flags it.
+**Decision:** V1 ships with real StoreKit subscriptions via **RevenueCat**. iOS users subscribe
+inside the app; web and Android users keep Flutterwave for V1. This adds ~3.5 working days to
+the V1 timeline but removes Apple guideline 3.1.1 rejection risk entirely.
 
-**Rationale:** Going to market with the same UX on iOS and Android beats a stripped-down iOS
-binary. Apple's enforcement of 3.1.1 against subscription-based learning apps that route to web
-is inconsistent — some pass, some don't. We take the bet, and have a clean fallback ready.
+**Why RevenueCat (vs raw StoreKit):**
+- Receipt verification, App Store Server Notifications V2, refund handling, family sharing,
+  billing retries — all absorbed by RevenueCat. Saves ~2–3 days of pure-StoreKit plumbing.
+- Same SDK handles Google Play Billing — when Google tightens external-payment enforcement,
+  we flip a flag in V1.1, no rewrite.
+- Free up to $2.5K MRR, then 1% above. Cheaper than our own dev time.
 
-**Pre-work (do before V1 submit so the V1.2 implementation is one short sprint, not weeks):**
+**External setup (you do these; code waits on them):**
 
-- [ ] 🟡 Apple Developer account has "Capabilities" enabled for In-App Purchase
-- [ ] 🟡 App Store Connect: create the two subscription products in advance (don't activate; they sit in "Ready to Submit" state)
+- [ ] 🔴 **App Store Connect** — create two auto-renewing subscriptions in the same group:
   - `com.chattatutor.mobile.pro.monthly` — $4.99/mo, "Pro"
   - `com.chattatutor.mobile.premium.monthly` — $9.99/mo, "Premium"
-  - Both in the same subscription group so upgrade/downgrade works via Apple's built-in proration
-- [ ] 🟡 Apple App Store Server Notifications V2 — register a production webhook URL (e.g., `https://api.chattatutor.com/iap/apple-webhook`) so the backend is ready to receive renewal / cancellation events
-- [ ] 🟡 App Review notes pre-written for the V1 submission: "ChattaTutor is a multi-platform learning service. Subscriptions are managed via our website. We are evaluating StoreKit IAP for an upcoming release. The iOS binary provides full functionality to paying subscribers signed in here; account creation and free-tier study are free."
+  - Add subscription metadata, review screenshot (one screenshot showing the paywall is fine), localizations for primary language
+- [ ] 🔴 **App Store Connect API key** — Settings → Users and Access → Keys → In-App Purchase → generate. Note the Key ID, Issuer ID, and download the `.p8` file. RevenueCat needs all three.
+- [ ] 🔴 **Apple Developer** — enable "In-App Purchase" capability on the bundle ID
+- [ ] 🔴 **RevenueCat dashboard** (free tier):
+  - Create project "ChattaTutor"
+  - Add iOS app → paste Apple bundle ID + App Store Connect API key
+  - Define **Entitlements**: `pro_access`, `premium_access` (separate entitlements so the backend knows which tier the user has)
+  - Sync **Products** from App Store Connect (RevenueCat pulls them via the API key)
+  - Attach products to entitlements (Pro product → `pro_access`; Premium product → both `pro_access` AND `premium_access` since Premium is a superset)
+  - Define an **Offering** (default) with both products as Packages
+  - Note the **Public SDK key** (starts with `appl_...`) — goes into mobile `.env`
+  - Generate a **webhook authorization header** (RevenueCat dashboard → Integrations → Webhooks) and set webhook URL to `https://api.chattatutor.com/api/iap/revenuecat-webhook` (in production) or your dev tunnel for testing
+- [ ] 🔴 Add `REVENUECAT_WEBHOOK_AUTH_HEADER` to backend `.env`
+- [ ] 🔴 Add `EXPO_PUBLIC_REVENUECAT_IOS_KEY` to mobile `.env`
 
-**If Apple rejects the V1 submission:**
+**Code work** (lives in ROADMAP §"Phase 9 — RevenueCat IAP integration" — now V1 scope, not V1.2):
 
-The full V1.2 IAP implementation lives in ROADMAP §"Phase 9 — StoreKit IAP integration." Detailed
-plan covers receipt verification, restore purchases, Flutterwave / IAP reconciliation, refund
-handling, and the iOS UI work. Estimated 5–7 working days from rejection notification to
-resubmission-ready binary.
+- Backend: webhook handler, reconciliation in `getEffectivePlan`
+- Mobile: `lib/iap.ts` wrapper, swap 4 checkout call sites on iOS, Restore Purchases + Manage links in Settings
+
+**App Review notes for V1 submission:**
+
+> ChattaTutor offers in-app subscriptions via Apple's StoreKit (Pro $4.99/mo, Premium $9.99/mo).
+> Web and Android users can alternatively purchase subscriptions on our website using
+> Flutterwave; this allows feature parity for users without an Apple ID, in line with multi-platform
+> educational services. iOS users see only the StoreKit purchase flow.
 
 ### 1.4 Production environment configuration
 
