@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { ErrorMessage } from "@/components/ErrorMessage";
+import { GoogleButton } from "@/components/GoogleButton";
 import { login } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useGoogleSignIn } from "@/lib/google-auth";
+import { Link } from "expo-router";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -18,13 +21,16 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const google = useGoogleSignIn({ onError: setError });
+
   const handleSubmit = async () => {
     setError(null);
     setLoading(true);
     try {
       const res = await login(emailOrUsername.trim(), password);
       if (res.requiresVerification) {
-        router.replace({ pathname: "/(auth)/check-email", params: { email: emailOrUsername } });
+        const email = emailOrUsername.includes("@") ? emailOrUsername.trim() : "";
+        router.replace({ pathname: "/(auth)/check-email", params: { email } });
         return;
       }
       await refresh();
@@ -34,6 +40,14 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogle = async () => {
+    setError(null);
+    const res = await google.signIn();
+    if (!res) return;
+    await refresh();
+    router.replace("/(tabs)");
   };
 
   return (
@@ -61,9 +75,9 @@ export default function LoginScreen() {
           <Text className="text-2xl font-bold text-slate-900">Sign in to your account</Text>
           <Text className="text-slate-600">
             Don't have an account?{" "}
-            <Link href="/(auth)/signup" className="text-indigo-600 font-semibold">
-              Sign up free
-            </Link>
+            <Pressable onPress={() => router.push("/(auth)/signup")}>
+              <Text className="text-indigo-600 font-semibold">Sign up free</Text>
+            </Pressable>
           </Text>
         </View>
 
@@ -81,8 +95,10 @@ export default function LoginScreen() {
           <View className="gap-2">
             <View className="flex-row items-center justify-between">
               <Text className="text-slate-900 font-medium">Password</Text>
-              <Link href="/(auth)/forgot-password" className="text-sm text-indigo-600 font-medium">
-                Forgot password?
+              <Link href="/(auth)/forgot-password" asChild>
+                <Pressable>
+                  <Text className="text-sm text-indigo-600 font-medium">Forgot password?</Text>
+                </Pressable>
               </Link>
             </View>
             <Input
@@ -98,6 +114,24 @@ export default function LoginScreen() {
           <ErrorMessage message={error} />
 
           <Button title={loading ? "Signing in..." : "Sign In"} loading={loading} onPress={handleSubmit} />
+
+          {google.enabled && (
+            <>
+              <View className="my-2 flex-row items-center gap-3">
+                <View className="h-px flex-1 bg-slate-200" />
+                <Text className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                  or continue with
+                </Text>
+                <View className="h-px flex-1 bg-slate-200" />
+              </View>
+
+              <GoogleButton
+                onPress={handleGoogle}
+                loading={google.inFlight}
+                disabled={!google.ready}
+              />
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </ScreenContainer>

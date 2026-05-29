@@ -34,10 +34,11 @@ export default function CheckEmailScreen() {
         <Text className="text-2xl font-bold text-slate-900 text-center">Check your email</Text>
         <Text className="text-center text-slate-600">
           We sent a verification link to{" "}
-          <Text className="font-semibold">{email || "your email"}</Text>. Follow the link to verify your account.
+          <Text className="font-semibold">{email || "your email"}</Text>. Tap the link in your mail
+          app, then use the banner on the page to open ChattaTutor again.
         </Text>
 
-        {message ? <Text className="text-sm text-slate-700">{message}</Text> : null}
+        {message ? <Text className="text-sm text-slate-700 text-center">{message}</Text> : null}
 
         <View className="flex-row gap-3 w-full">
           <View className="flex-1">
@@ -54,7 +55,7 @@ export default function CheckEmailScreen() {
         </View>
 
         <Text className="text-xs text-slate-500 text-center mt-2">
-          Didn't receive an email? Check your spam folder or try resending.
+          Did not receive an email? Check spam or try resending.
         </Text>
       </View>
     </ScreenContainer>

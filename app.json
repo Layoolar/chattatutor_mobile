@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "ChattaTutor",
-    "slug": "chattatutor-mobile",
+    "slug": "chattatutor",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,14 +15,35 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chattatutor.mobile"
+      "bundleIdentifier": "com.chattatutor.mobile",
+      "associatedDomains": ["applinks:chattatutor.com"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAFBFC"
       },
-      "package": "com.chattatutor.mobile"
+      "package": "com.chattatutor.mobile",
+      "permissions": ["POST_NOTIFICATIONS"],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "chattatutor.com",
+              "pathPrefix": "/verify-email"
+            },
+            {
+              "scheme": "https",
+              "host": "chattatutor.com",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -30,12 +51,22 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       "expo-secure-store",
       "expo-font"
     ],
     "experiments": {
-      "typedRoutes": true,
+      "typedRoutes": false,
       "tsconfigPaths": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "2ca93a66-2e97-488c-9564-989ef8388cdd"
+      }
+    },
+    "owner": "layoolar"
   }
 }

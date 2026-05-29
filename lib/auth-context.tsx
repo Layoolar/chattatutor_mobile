@@ -6,6 +6,8 @@ import {
   logout as logoutHelper,
   type User,
 } from "./auth";
+import { onUnauthorized } from "./fetch";
+import { unregisterStoredPushDeviceAsync } from "./push-notifications";
 
 interface AuthContextValue {
   user: User | null;
@@ -34,9 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const signOut = useCallback(async () => {
+    await unregisterStoredPushDeviceAsync().catch(() => {});
     await logoutHelper();
     setUser(null);
   }, []);
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      void signOut();
+    });
+  }, [signOut]);
 
   const value = useMemo(
     () => ({ user, loading, refresh, signOut }),

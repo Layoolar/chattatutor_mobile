@@ -1,11 +1,20 @@
 import "../global.css";
+import "@/lib/suppress-render-html-warnings";
 
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { ToastProvider, useToast } from "@/lib/toast";
+import { onUnauthorized } from "@/lib/fetch";
+import {
+  configureNotificationPresentation,
+  installNotificationResponseListener,
+  installPushTokenRotationListener,
+} from "@/lib/push-notifications";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore: hideAsync runs on first render below
@@ -20,9 +29,19 @@ function AuthGate() {
     if (loading) return;
 
     const firstSegment = segments[0] as string | undefined;
+    const secondSegment = segments[1] as string | undefined;
     const inAuthGroup = firstSegment === "(auth)";
     const inTabsGroup = firstSegment === "(tabs)";
     const onLanding = firstSegment === "landing";
+    // verify-email and reset-password must be reachable from email deep links
+    // regardless of auth state — never auto-redirect away from them.
+    const onPublicTokenRoute =
+      secondSegment === "verify-email" || secondSegment === "reset-password";
+
+    if (onPublicTokenRoute) {
+      SplashScreen.hideAsync().catch(() => {});
+      return;
+    }
 
     if (!user && (inTabsGroup || firstSegment === undefined)) {
       router.replace("/landing");
@@ -36,24 +55,76 @@ function AuthGate() {
   return null;
 }
 
+function UnauthorizedBridge() {
+  const toast = useToast();
+  useEffect(() => {
+    return onUnauthorized(() => {
+      toast.error("Your session expired. Please sign in again.");
+    });
+  }, [toast]);
+  return null;
+}
+
+function NotificationBridge() {
+  const router = useRouter();
+
+  useEffect(() => {
+    configureNotificationPresentation();
+    const tapCleanup = installNotificationResponseListener(router);
+    const rotationCleanup = installPushTokenRotationListener();
+    return () => {
+      tapCleanup();
+      rotationCleanup();
+    };
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AuthGate />
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "#FAFBFC" },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="landing" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <UnauthorizedBridge />
+            <NotificationBridge />
+            <AuthGate />
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: "#FAFBFC" },
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="landing" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="upload" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="topic-course" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="course/[pdfId]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="course/[pdfId]/boss-quiz" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="lesson/[pdfId]/[lessonIndex]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="lesson/[pdfId]/[lessonIndex]/flashcards" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="lesson/[pdfId]/[lessonIndex]/quiz" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="community/[id]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="daily-drill" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="hives/create" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="hives/[teamId]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="hives/[teamId]/chats/[chatId]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="suggestions/index" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="quests" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="league" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="passport" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/index" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/create" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen name="challenges/[id]" options={{ animation: "slide_from_right" }} />
+              <Stack.Screen name="challenges/[id]/play" options={{ animation: "slide_from_bottom", gestureEnabled: false }} />
+            </Stack>
+          </AuthProvider>
+        </ToastProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

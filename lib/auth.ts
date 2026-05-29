@@ -6,6 +6,7 @@ import {
   loadAuthToken,
   getAuthTokenSync,
 } from "./auth-helpers";
+import { apiFetch } from "./fetch";
 
 export interface User {
   id: string;
@@ -37,15 +38,23 @@ export interface GoogleSignInResponse {
 
 export { setAuthToken, clearAuthToken, loadAuthToken, getAuthTokenSync };
 
+/** Tells the API to add `from=app` on links in auth emails (web shows Open app banner). */
+export const AUTH_EMAIL_SOURCE_MOBILE = "mobile" as const;
+
 export async function signup(
   email: string,
   username: string,
   password: string,
 ): Promise<AuthResponse> {
-  const response = await fetch(`${AUTH_URL}/signup`, {
+  const response = await apiFetch(`${AUTH_URL}/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, username, password }),
+    body: JSON.stringify({
+      email,
+      username,
+      password,
+      source: AUTH_EMAIL_SOURCE_MOBILE,
+    }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Signup failed");
@@ -56,10 +65,10 @@ export async function signup(
 }
 
 export async function login(emailOrUsername: string, password: string): Promise<AuthResponse> {
-  const response = await fetch(`${AUTH_URL}/login`, {
+  const response = await apiFetch(`${AUTH_URL}/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ emailOrUsername, password }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Login failed");
@@ -76,10 +85,10 @@ export interface VerifyEmailResponse {
 }
 
 export async function verifyEmail(token: string): Promise<VerifyEmailResponse> {
-  const response = await fetch(`${AUTH_URL}/verify-email`, {
+  const response = await apiFetch(`${AUTH_URL}/verify-email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Verification failed");
@@ -90,10 +99,10 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResponse> {
 }
 
 export async function resendVerification(email: string): Promise<{ message: string }> {
-  const response = await fetch(`${AUTH_URL}/resend-verification`, {
+  const response = await apiFetch(`${AUTH_URL}/resend-verification`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, source: AUTH_EMAIL_SOURCE_MOBILE }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Resend failed");
@@ -101,10 +110,10 @@ export async function resendVerification(email: string): Promise<{ message: stri
 }
 
 export async function googleSignIn(idToken: string): Promise<GoogleSignInResponse> {
-  const response = await fetch(`${AUTH_URL}/google`, {
+  const response = await apiFetch(`${AUTH_URL}/google`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ idToken }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Google sign-in failed");
@@ -119,9 +128,7 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${AUTH_URL}/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await apiFetch(`${AUTH_URL}/me`);
 
     if (!response.ok) {
       await clearAuthToken();
@@ -140,10 +147,10 @@ export async function logout(): Promise<void> {
 }
 
 export async function forgotPassword(email: string): Promise<{ message: string }> {
-  const response = await fetch(`${AUTH_URL}/forgot-password`, {
+  const response = await apiFetch(`${AUTH_URL}/forgot-password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, source: AUTH_EMAIL_SOURCE_MOBILE }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Failed to send password reset email");
@@ -151,10 +158,10 @@ export async function forgotPassword(email: string): Promise<{ message: string }
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-  const response = await fetch(`${AUTH_URL}/reset-password`, {
+  const response = await apiFetch(`${AUTH_URL}/reset-password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, newPassword }),
+    skipAuth: true,
   });
 
   if (!response.ok) await throwApiError(response, "Failed to reset password");
@@ -162,18 +169,27 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export async function changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
-  const token = getAuthTokenSync();
+  const token = getAuthTokenSync() ?? (await loadAuthToken());
   if (!token) throw new Error("Not authenticated");
 
-  const response = await fetch(`${AUTH_URL}/change-password`, {
+  const response = await apiFetch(`${AUTH_URL}/change-password`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify({ oldPassword, newPassword }),
   });
 
   if (!response.ok) await throwApiError(response, "Failed to change password");
+  return response.json();
+}
+
+export async function updateUsername(username: string): Promise<{ username: string }> {
+  const token = getAuthTokenSync() ?? (await loadAuthToken());
+  if (!token) throw new Error("Not authenticated");
+
+  const response = await apiFetch(`${AUTH_URL}/profile`, {
+    method: "PUT",
+    body: JSON.stringify({ username }),
+  });
+
+  if (!response.ok) await throwApiError(response, "Failed to update username");
   return response.json();
 }

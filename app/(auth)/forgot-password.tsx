@@ -36,7 +36,7 @@ export default function ForgotPasswordScreen() {
       >
         <View className="pt-4 pb-2">
           <Pressable
-            onPress={() => router.canGoBack() ? router.back() : router.replace("/(auth)/login")}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"))}
             className="flex-row items-center gap-2"
             hitSlop={8}
           >
@@ -53,10 +53,13 @@ export default function ForgotPasswordScreen() {
               </View>
               <Text className="text-2xl font-bold text-slate-900">Check Your Email</Text>
               <Text className="text-center text-slate-600">
-                If an account with that email exists, we've sent a password reset link to{" "}
-                <Text className="font-semibold">{email}</Text>
+                If an account with that email exists, we sent a reset link to{" "}
+                <Text className="font-semibold">{email}</Text>. Open the link in your mail app,
+                then use the banner on the page to return here.
               </Text>
-              <Text className="text-sm text-slate-500">The link will expire in 1 hour.</Text>
+              <Text className="text-sm text-slate-500 text-center">
+                The link expires in 1 hour.
+              </Text>
               <Button title="Return to Login" onPress={() => router.replace("/(auth)/login")} />
             </View>
           ) : (
@@ -67,7 +70,7 @@ export default function ForgotPasswordScreen() {
                 </View>
                 <Text className="text-2xl font-bold text-slate-900">Forgot Password?</Text>
                 <Text className="text-center text-slate-600">
-                  Enter your email address and we'll send you a link to reset your password.
+                  Enter your email and we will send you a link to reset your password.
                 </Text>
               </View>
 
