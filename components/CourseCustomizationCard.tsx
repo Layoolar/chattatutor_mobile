@@ -7,6 +7,7 @@ import {
   type LearningPreferences,
 } from "@/lib/api";
 import { FeatureLockSheet } from "@/components/FeatureLockSheet";
+import { HIDE_PAYWALL_UI } from "@/lib/ios-paywall";
 
 const FALLBACK_OPTIONS: CustomizationOptions = {
   toneStyles: [
@@ -258,7 +259,7 @@ export function CourseCustomizationCard({
               hasPremiumAccess ? "text-emerald-700" : "text-amber-700"
             }`}
           >
-            {hasPremiumAccess ? "Premium unlocked" : "Premium"}
+            {hasPremiumAccess ? "Unlocked" : HIDE_PAYWALL_UI ? "Locked" : "Premium"}
           </Text>
         </View>
       </View>
@@ -266,11 +267,14 @@ export function CourseCustomizationCard({
       {!hasPremiumAccess ? (
         <View className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 gap-1">
           <Text className="text-sm font-semibold text-slate-900">
-            Personalization is a Premium feature
+            {HIDE_PAYWALL_UI
+              ? "Personalization is unavailable in this version"
+              : "Personalization is a Premium feature"}
           </Text>
           <Text className="text-xs leading-5 text-slate-600">
-            You can still generate the course now. Upgrade later to control tone,
-            explanation depth, learning mode, and interactive visuals.
+            {HIDE_PAYWALL_UI
+              ? "You can still generate the course now. Tone, explanation depth, learning mode, and interactive visuals are managed from your account on chattatutor.com."
+              : "You can still generate the course now. Upgrade later to control tone, explanation depth, learning mode, and interactive visuals."}
           </Text>
         </View>
       ) : (

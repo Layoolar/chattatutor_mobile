@@ -54,7 +54,8 @@ import {
   registerForPushNotificationsAsync,
   unregisterStoredPushDeviceAsync,
 } from "@/lib/push-notifications";
-import { openWebAppFlow } from "@/lib/web-links";
+import { openWebAppFlowAuthenticated } from "@/lib/web-links";
+import { HIDE_PAYWALL_UI, IOS_NEUTRAL_COPY, openAccountOnWeb } from "@/lib/ios-paywall";
 
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
 
@@ -266,9 +267,12 @@ export default function ProfileScreen() {
 
   // Deep-link from upgrade prompts: ?openPricing=1 lands here and we auto-open the pricing sheet.
   // We strip the param after handling so a tab re-focus doesn't keep re-opening it.
+  //
+  // On iOS we never open the pricing sheet (Apple guideline 3.1.1 — no in-app upsell UI).
+  // The deep-link param is still stripped so the URL doesn't sit stale.
   useEffect(() => {
     if (params.openPricing === "1") {
-      setActiveSheet("pricing");
+      if (!HIDE_PAYWALL_UI) setActiveSheet("pricing");
       router.setParams({ openPricing: undefined, from: undefined });
     }
   }, [params.openPricing, router]);
@@ -494,10 +498,18 @@ export default function ProfileScreen() {
     try {
       setPaymentLoading(true);
       setActiveSheet(null);
-      await openWebAppFlow("/pricing");
-      toast.info("Finish billing in your browser, then return here and pull to refresh.");
+      // iOS lands on the marketing homepage (Apple 3.1.1 strictness — no deep link to /pricing).
+      // Android / web land on /pricing directly. Both flows now use the bridge so the
+      // user arrives already signed in — important for Apple Sign-In users (no
+      // password + private-relay email) but also a nice UX win for everyone else.
+      if (HIDE_PAYWALL_UI) {
+        await openAccountOnWeb();
+      } else {
+        await openWebAppFlowAuthenticated("/pricing");
+      }
+      toast.info("Finish on chattatutor.com, then return here and pull to refresh.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't open billing page");
+      toast.error(err instanceof Error ? err.message : "Couldn't open chattatutor.com");
     } finally {
       setPaymentLoading(false);
       setCancelLoading(false);
@@ -677,11 +689,21 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
                 <Pressable
-                  onPress={() => setActiveSheet("pricing")}
+                  onPress={() => {
+                    if (HIDE_PAYWALL_UI) {
+                      void handleOpenBillingOnWeb();
+                    } else {
+                      setActiveSheet("pricing");
+                    }
+                  }}
                   className="rounded-full bg-slate-900 px-4 py-3"
                 >
                   <Text className="text-sm font-semibold text-white">
-                    {planName === "premium" ? "Manage" : "Upgrade"}
+                    {HIDE_PAYWALL_UI
+                      ? IOS_NEUTRAL_COPY.planCardButton
+                      : planName === "premium"
+                        ? "Manage"
+                        : "Upgrade"}
                   </Text>
                 </Pressable>
               </View>
@@ -980,14 +1002,33 @@ export default function ProfileScreen() {
 
       <BottomSheet
         visible={activeSheet === "pricing"}
-        title="Plans and billing"
-        subtitle="Track what your current plan includes and upgrade when you need more room."
+        title={HIDE_PAYWALL_UI ? "Account" : "Plans and billing"}
+        subtitle={
+          HIDE_PAYWALL_UI
+            ? "Your account is managed on chattatutor.com."
+            : "Track what your current plan includes and upgrade when you need more room."
+        }
         onClose={() => {
           if (!paymentLoading && !cancelLoading) {
             setActiveSheet(null);
           }
         }}
       >
+        {HIDE_PAYWALL_UI ? (
+          <View className="gap-4 pb-4">
+            <View className="rounded-3xl border border-slate-200 bg-white p-5 gap-3">
+              <Text className="text-base font-bold text-slate-900">Manage on the web</Text>
+              <Text className="text-sm leading-6 text-slate-500">
+                Account and billing changes happen on chattatutor.com. Open the website to continue, then return here and pull to refresh.
+              </Text>
+              <Button
+                title={IOS_NEUTRAL_COPY.cta}
+                loading={paymentLoading || cancelLoading}
+                onPress={handleOpenBillingOnWeb}
+              />
+            </View>
+          </View>
+        ) : (
         <View className="gap-4 pb-4">
           <View className="rounded-3xl border border-slate-200 bg-white p-5 gap-4">
             <View className="flex-row items-start justify-between gap-3">
@@ -1046,6 +1087,7 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
+        )}
       </BottomSheet>
     </>
   );

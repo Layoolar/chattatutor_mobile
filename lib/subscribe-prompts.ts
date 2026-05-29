@@ -12,6 +12,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "@/lib/auth";
+import { HIDE_PAYWALL_UI } from "@/lib/ios-paywall";
 
 export type SubscribePromptKind = "home" | "tokenCap" | "trialEnding";
 
@@ -70,6 +71,8 @@ export async function pickSubscribePrompt(params: {
 }): Promise<SubscribePromptKind | null> {
   const { user, tokenUsagePercent } = params;
   if (!user) return null;
+  // Apple guideline 3.1.1: no upsell banners inside the iOS binary.
+  if (HIDE_PAYWALL_UI) return null;
 
   // Trial ending — premium trial with <= 2 days remaining
   if (user.subscriptionStatus === "trialing" && (user.plan === "premium" || user.plan === "pro")) {

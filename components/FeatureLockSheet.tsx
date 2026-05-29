@@ -2,6 +2,7 @@ import React from "react";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Lock, Sparkles, X } from "lucide-react-native";
+import { HIDE_PAYWALL_UI, IOS_NEUTRAL_COPY, openAccountOnWeb } from "@/lib/ios-paywall";
 
 interface Props {
   visible: boolean;
@@ -14,16 +15,30 @@ interface Props {
 
 /**
  * Paywall sheet shown when a free user taps a premium-only feature. Intent-triggered,
- * never preemptive. The CTA routes to the Profile pricing sheet (which then takes the
- * user to the web for payment).
+ * never preemptive.
+ *
+ * On Android / web: shows plan name + pricing + routes to the in-app pricing sheet which
+ * forwards to chattatutor.com/pricing.
+ *
+ * On iOS: hides pricing / plan name (Apple guideline 3.1.1) and opens the marketing
+ * homepage directly. The web side handles billing.
  */
 export function FeatureLockSheet({ visible, featureName, description, onClose }: Props) {
   const router = useRouter();
 
-  const handleUpgrade = () => {
+  const handleUpgrade = async () => {
     onClose();
+    if (HIDE_PAYWALL_UI) {
+      await openAccountOnWeb();
+      return;
+    }
     router.push({ pathname: "/(tabs)/profile", params: { openPricing: "1", from: "featureLock" } });
   };
+
+  const title = HIDE_PAYWALL_UI ? IOS_NEUTRAL_COPY.lockTitle : featureName;
+  const body = HIDE_PAYWALL_UI
+    ? IOS_NEUTRAL_COPY.lockBody
+    : (description ?? "This feature is part of Premium.");
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
@@ -41,10 +56,8 @@ export function FeatureLockSheet({ visible, featureName, description, onClose }:
                   <Lock size={18} color="#6d28d9" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-lg font-extrabold text-slate-900">{featureName}</Text>
-                  <Text className="mt-1 text-sm leading-6 text-slate-500">
-                    {description ?? "This feature is part of Premium."}
-                  </Text>
+                  <Text className="text-lg font-extrabold text-slate-900">{title}</Text>
+                  <Text className="mt-1 text-sm leading-6 text-slate-500">{body}</Text>
                 </View>
               </View>
               <Pressable
@@ -57,18 +70,22 @@ export function FeatureLockSheet({ visible, featureName, description, onClose }:
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} className="max-h-[60vh]">
-              <View className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
-                <View className="flex-row items-center gap-2">
-                  <Sparkles size={16} color="#6d28d9" />
-                  <Text className="text-sm font-semibold text-violet-900">Premium unlocks</Text>
+              {HIDE_PAYWALL_UI ? null : (
+                <View className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                  <View className="flex-row items-center gap-2">
+                    <Sparkles size={16} color="#6d28d9" />
+                    <Text className="text-sm font-semibold text-violet-900">Premium unlocks</Text>
+                  </View>
+                  <Text className="mt-2 text-sm leading-6 text-violet-900">
+                    Larger monthly credits, AI coach, weak-concept targeting, and premium practice modes — for $9.99/month.
+                  </Text>
                 </View>
-                <Text className="mt-2 text-sm leading-6 text-violet-900">
-                  Larger monthly credits, AI coach, weak-concept targeting, and premium practice modes — for $9.99/month.
-                </Text>
-              </View>
+              )}
 
               <Text className="mt-3 text-xs leading-5 text-slate-500">
-                Billing happens on chattatutor.com. Return to the app and pull to refresh once you're done.
+                {HIDE_PAYWALL_UI
+                  ? "Account and billing changes happen on chattatutor.com."
+                  : "Billing happens on chattatutor.com. Return to the app and pull to refresh once you're done."}
               </Text>
             </ScrollView>
 
@@ -76,7 +93,9 @@ export function FeatureLockSheet({ visible, featureName, description, onClose }:
               onPress={handleUpgrade}
               className="mt-4 rounded-full bg-slate-900 px-4 py-3 items-center"
             >
-              <Text className="text-sm font-semibold text-white">See Premium</Text>
+              <Text className="text-sm font-semibold text-white">
+                {HIDE_PAYWALL_UI ? IOS_NEUTRAL_COPY.cta : "See Premium"}
+              </Text>
             </Pressable>
             <Pressable onPress={onClose} className="mt-2 px-4 py-3 items-center">
               <Text className="text-sm font-medium text-slate-500">Not now</Text>

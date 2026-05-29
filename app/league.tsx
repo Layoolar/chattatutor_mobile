@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast";
 import { hasPremiumFeatureAccess } from "@/lib/premium-access";
+import { HIDE_PAYWALL_UI, IOS_NEUTRAL_COPY, openAccountOnWeb } from "@/lib/ios-paywall";
 import { getLeague, type LeagueData, type LeagueMember, type LeagueTier } from "@/lib/api";
 import { markFeatureDiscovered } from "@/lib/feature-discovery";
 
@@ -200,28 +201,33 @@ export default function LeagueScreen() {
             </GradientIcon>
             <View className="rounded-full bg-amber-100 px-3 py-1.5">
               <Text className="text-xs font-bold text-amber-700">
-                Premium feature
+                {HIDE_PAYWALL_UI ? IOS_NEUTRAL_COPY.lockedBadge : "Premium feature"}
               </Text>
             </View>
             <Text className="text-2xl font-extrabold text-slate-900 text-center">
               Weekly Leagues
             </Text>
             <Text className="text-sm leading-6 text-slate-600 text-center max-w-xs">
-              Compete in your tier against learners with similar mastery. Top
-              promote, bottom relegate, weekly reset.
+              {HIDE_PAYWALL_UI
+                ? "Weekly leagues are managed from your account on chattatutor.com."
+                : "Compete in your tier against learners with similar mastery. Top promote, bottom relegate, weekly reset."}
             </Text>
             <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/profile",
-                  params: { openPricing: "1", from: "league" },
-                })
-              }
+              onPress={() => {
+                if (HIDE_PAYWALL_UI) {
+                  void openAccountOnWeb();
+                } else {
+                  router.push({
+                    pathname: "/(tabs)/profile",
+                    params: { openPricing: "1", from: "league" },
+                  });
+                }
+              }}
               className="h-12 px-8 rounded-full bg-slate-900 active:bg-slate-800 flex-row items-center"
             >
               <Crown size={16} color="#ffffff" />
               <Text className="ml-2 text-sm font-semibold text-white">
-                See Premium
+                {HIDE_PAYWALL_UI ? IOS_NEUTRAL_COPY.cta : "See Premium"}
               </Text>
             </Pressable>
             <Pressable

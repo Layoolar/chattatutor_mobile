@@ -147,6 +147,26 @@ export async function logout(): Promise<void> {
   await clearAuthToken();
 }
 
+/**
+ * Mint a single-use web bridge URL for the current user. The mobile app opens this
+ * URL in the system browser to land the user pre-authenticated on chattatutor.com
+ * — important for Apple Sign-In users (no password + private-relay email).
+ *
+ * `path` is the destination route on the web (e.g. "/pricing", "/dashboard"). The
+ * backend whitelists it to in-domain paths.
+ */
+export async function getWebBridgeUrl(path?: string): Promise<string> {
+  const response = await apiFetch(`${AUTH_URL}/web-bridge`, {
+    method: "POST",
+    body: JSON.stringify(path ? { to: path } : {}),
+  });
+
+  if (!response.ok) await throwApiError(response, "Couldn't open chattatutor.com");
+  const data = (await response.json()) as { url?: string };
+  if (!data?.url) throw new Error("Bridge response missing URL");
+  return data.url;
+}
+
 export async function forgotPassword(email: string): Promise<{ message: string }> {
   const response = await apiFetch(`${AUTH_URL}/forgot-password`, {
     method: "POST",
