@@ -16,6 +16,7 @@
     "@types/dagre": "^0.7.54",
     "dagre": "^0.8.5",
     "expo": "~51.0.28",
+    "expo-apple-authentication": "~6.4.2",
     "expo-auth-session": "~5.5.2",
     "expo-av": "~14.0.7",
     "expo-clipboard": "~6.0.3",

@@ -8,7 +8,8 @@ import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { GoogleButton } from "@/components/GoogleButton";
-import { signup } from "@/lib/auth";
+import { AppleButton } from "@/components/AppleButton";
+import { signup, appleSignIn, type AppleSignInInput } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useGoogleSignIn } from "@/lib/google-auth";
 
@@ -30,6 +31,17 @@ export default function SignupScreen() {
     if (!res) return;
     await refresh();
     router.replace("/(tabs)");
+  };
+
+  const handleApple = async (input: AppleSignInInput) => {
+    setError(null);
+    try {
+      await appleSignIn(input);
+      await refresh();
+      router.replace("/(tabs)");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Apple sign-in failed");
+    }
   };
 
   const handleSubmit = async () => {
@@ -135,7 +147,7 @@ export default function SignupScreen() {
             onPress={handleSubmit}
           />
 
-          {google.enabled && (
+          {(google.enabled || Platform.OS === "ios") && (
             <>
               <View className="my-2 flex-row items-center gap-3">
                 <View className="h-px flex-1 bg-slate-200" />
@@ -145,12 +157,17 @@ export default function SignupScreen() {
                 <View className="h-px flex-1 bg-slate-200" />
               </View>
 
-              <GoogleButton
-                onPress={handleGoogle}
-                loading={google.inFlight}
-                disabled={!google.ready}
-                label="Sign up with Google"
-              />
+              {/* SIWA must appear above other social logins on iOS (Apple HIG 4.8). */}
+              <AppleButton onSuccess={handleApple} onError={(e) => setError(e.message)} />
+
+              {google.enabled && (
+                <GoogleButton
+                  onPress={handleGoogle}
+                  loading={google.inFlight}
+                  disabled={!google.ready}
+                  label="Sign up with Google"
+                />
+              )}
             </>
           )}
         </View>

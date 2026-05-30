@@ -18,7 +18,8 @@ export interface User {
   subscriptionStatus?: "active" | "canceled" | "past_due" | "trialing" | "expired" | null;
   subscriptionEndsAt?: string | null;
   pendingPlan?: "pro" | "premium" | null;
-  authProvider?: string;
+  authProvider?: "local" | "google" | "apple" | string;
+  appleUserId?: string | null;
   lastCourseGeneratedAt?: string | null;
   createdAt?: string;
   trialGenerationsRemaining?: number;
@@ -35,6 +36,17 @@ export interface GoogleSignInResponse {
   user: User;
   token?: string;
   isNewUser?: boolean;
+}
+
+export interface AppleSignInResponse {
+  user: User;
+  token?: string;
+  isNewUser?: boolean;
+}
+
+export interface AppleSignInInput {
+  identityToken: string;
+  fullName?: { givenName?: string | null; familyName?: string | null } | null;
 }
 
 export { setAuthToken, clearAuthToken, loadAuthToken, getAuthTokenSync };
@@ -120,6 +132,29 @@ export async function googleSignIn(idToken: string): Promise<GoogleSignInRespons
   if (!response.ok) await throwApiError(response, "Google sign-in failed");
 
   const data: GoogleSignInResponse = await response.json();
+  if (data.token) await setAuthToken(data.token);
+  return data;
+}
+
+/**
+ * Sign in with Apple. The native SDK gives us a signed identity token (JWT) and
+ * — only on first authorization — a `fullName` object. Both get forwarded to
+ * the backend, which verifies the JWT against Apple's JWKS before issuing our
+ * own session token.
+ *
+ * Apple guideline 4.8 requires SIWA when any other third-party social login is
+ * offered, which is why this flow exists alongside `googleSignIn`.
+ */
+export async function appleSignIn(input: AppleSignInInput): Promise<AppleSignInResponse> {
+  const response = await apiFetch(`${AUTH_URL}/apple`, {
+    method: "POST",
+    body: JSON.stringify(input),
+    skipAuth: true,
+  });
+
+  if (!response.ok) await throwApiError(response, "Apple sign-in failed");
+
+  const data: AppleSignInResponse = await response.json();
   if (data.token) await setAuthToken(data.token);
   return data;
 }
