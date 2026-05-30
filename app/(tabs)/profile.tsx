@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import {
+  AlertTriangle,
   Bell,
   CalendarCheck,
   Check,
@@ -23,6 +24,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   Volume2,
   X,
@@ -37,7 +39,7 @@ import { ActivityHeatmap } from "@/components/ActivityHeatmap";
 import { GradientIcon } from "@/components/GradientIcon";
 import { RankProgressCard } from "@/components/RankProgressCard";
 import { useAuth } from "@/lib/auth-context";
-import { changePassword, updateUsername } from "@/lib/auth";
+import { changePassword, deleteAccount as deleteAccountApi, updateUsername } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import {
   getUserActivity,
@@ -60,7 +62,7 @@ import { HIDE_PAYWALL_UI, IOS_NEUTRAL_COPY, openAccountOnWeb } from "@/lib/ios-p
 const PROFILE_SETTINGS_KEY = "profile_settings_v1";
 
 type VoiceSpeed = "normal" | "slow";
-type ActiveSheet = "password" | "pricing" | null;
+type ActiveSheet = "password" | "pricing" | "delete" | null;
 
 interface ProfileSettings {
   learningReminders: boolean;
@@ -287,6 +289,13 @@ export default function ProfileScreen() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  // Account deletion (Apple guideline 5.1.1(v)). `deleteConfirm` must equal
+  // the literal string DELETE_CONFIRM_PHRASE before the button enables — same
+  // pattern used on the web. Password is only collected for local accounts.
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadAccountData = useCallback(async () => {
     const [activityResult, rankResult, tokenResult] = await Promise.allSettled([
@@ -419,6 +428,38 @@ export default function ProfileScreen() {
     await signOut();
     toast.success("Signed out");
     router.replace("/landing");
+  };
+
+  const isLocalAccount =
+    !user?.authProvider || user.authProvider === "local";
+
+  const handleDeleteAccount = async () => {
+    setDeleteError(null);
+
+    if (deleteConfirm.trim().toUpperCase() !== "DELETE") {
+      setDeleteError("Type DELETE to confirm");
+      return;
+    }
+    if (isLocalAccount && !deletePassword) {
+      setDeleteError("Enter your current password to continue");
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await deleteAccountApi(isLocalAccount ? deletePassword : undefined);
+      // Clear sheet state before signOut so the modal doesn't flash on the way out.
+      setActiveSheet(null);
+      setDeleteConfirm("");
+      setDeletePassword("");
+      await signOut();
+      toast.success("Your account has been deleted");
+      router.replace("/landing");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Couldn't delete account");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleUsernameSave = async () => {
@@ -958,6 +999,29 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Danger zone — Apple guideline 5.1.1(v) requires in-app account deletion. */}
+          <View className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 gap-3 mb-12">
+            <View className="flex-row items-center gap-2">
+              <AlertTriangle size={16} color="#be123c" />
+              <Text className="text-sm font-bold text-rose-900">Danger zone</Text>
+            </View>
+            <Text className="text-xs leading-5 text-rose-900/80">
+              Deleting your account is permanent. Your courses, mastery progress, and any active subscription will be removed. This cannot be undone.
+            </Text>
+            <Pressable
+              onPress={() => {
+                setDeleteError(null);
+                setDeleteConfirm("");
+                setDeletePassword("");
+                setActiveSheet("delete");
+              }}
+              className="flex-row items-center justify-center gap-2 rounded-full bg-rose-600 px-4 py-3 active:bg-rose-700"
+            >
+              <Trash2 size={16} color="#ffffff" />
+              <Text className="text-sm font-semibold text-white">Delete account</Text>
+            </Pressable>
+          </View>
         </View>
       </ScreenContainer>
 
@@ -1088,6 +1152,93 @@ export default function ProfileScreen() {
           </View>
         </View>
         )}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={activeSheet === "delete"}
+        title="Delete account?"
+        subtitle="This is permanent and cannot be undone."
+        onClose={() => {
+          if (!deleting) {
+            setActiveSheet(null);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <View className="gap-4 pb-4">
+          <View className="rounded-2xl border border-rose-200 bg-rose-50 p-4 gap-2">
+            <View className="flex-row items-center gap-2">
+              <AlertTriangle size={16} color="#be123c" />
+              <Text className="text-sm font-bold text-rose-900">What happens next</Text>
+            </View>
+            <Text className="text-xs leading-5 text-rose-900/80">
+              We will cancel any active subscription, remove your courses and mastery progress, anonymise your record, and email you a confirmation. There is no undo.
+            </Text>
+          </View>
+
+          <Input
+            label="Type DELETE to confirm"
+            value={deleteConfirm}
+            onChangeText={(value) => {
+              setDeleteConfirm(value);
+              if (deleteError) setDeleteError(null);
+            }}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            placeholder="DELETE"
+          />
+
+          {isLocalAccount ? (
+            <Input
+              label="Current password"
+              value={deletePassword}
+              onChangeText={(value) => {
+                setDeletePassword(value);
+                if (deleteError) setDeleteError(null);
+              }}
+              secureToggle
+              secureTextEntry
+              placeholder="Enter your password"
+            />
+          ) : (
+            <Text className="text-xs leading-5 text-slate-500">
+              You signed in with {user?.authProvider === "apple" ? "Apple" : "Google"}, so no password is needed.
+            </Text>
+          )}
+
+          {deleteError ? (
+            <Text className="text-xs font-medium text-rose-700">{deleteError}</Text>
+          ) : null}
+
+          <Pressable
+            onPress={handleDeleteAccount}
+            disabled={deleting}
+            className={`flex-row items-center justify-center gap-2 rounded-full px-4 py-3 ${
+              deleting ? "bg-rose-400" : "bg-rose-600 active:bg-rose-700"
+            }`}
+          >
+            {deleting ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <>
+                <Trash2 size={16} color="#ffffff" />
+                <Text className="text-sm font-semibold text-white">Permanently delete my account</Text>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              if (!deleting) {
+                setActiveSheet(null);
+                setDeleteError(null);
+              }
+            }}
+            className="items-center py-2"
+          >
+            <Text className="text-sm font-medium text-slate-500">Cancel</Text>
+          </Pressable>
+        </View>
       </BottomSheet>
     </>
   );

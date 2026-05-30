@@ -183,6 +183,27 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * Permanently delete the signed-in account (Apple guideline 5.1.1(v)).
+ *
+ * `password` is required for local/password accounts (server-side re-auth). For
+ * OAuth users (Google, Apple) pass nothing — the JWT is sufficient proof.
+ *
+ * Resolves on success. The caller should clear local auth state immediately
+ * after — the JWT is still technically valid until expiry but the row is gone,
+ * so any subsequent authed call will 401.
+ */
+export async function deleteAccount(password?: string): Promise<void> {
+  const response = await apiFetch(`${AUTH_URL}/account`, {
+    method: "DELETE",
+    body: JSON.stringify(password ? { password } : {}),
+  });
+
+  if (!response.ok && response.status !== 204) {
+    await throwApiError(response, "Couldn't delete account");
+  }
+}
+
+/**
  * Mint a single-use web bridge URL for the current user. The mobile app opens this
  * URL in the system browser to land the user pre-authenticated on chattatutor.com
  * — important for Apple Sign-In users (no password + private-relay email).
