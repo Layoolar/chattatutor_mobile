@@ -734,6 +734,18 @@ export async function updatePushPreferences(
   return response.json();
 }
 
+export async function testPushNotification(
+  title?: string,
+  body?: string,
+): Promise<{ message: string; result: { sent: number; skipped: number; failed: number; errors: string[] } }> {
+  const response = await apiFetch(`${API_URL}/users/push-devices/test`, {
+    method: 'POST',
+    body: JSON.stringify({ title, body }),
+  });
+  if (!response.ok) throw createApiError(response, 'Failed to send test push');
+  return response.json();
+}
+
 export async function unregisterPushDevice(expoPushToken: string): Promise<void> {
   const response = await apiFetch(`${API_URL}/users/push-devices`, {
     method: "DELETE",

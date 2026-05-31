@@ -25,6 +25,20 @@ export function useGoogleSignIn(options?: {
   const iosId = GOOGLE_IOS_CLIENT_ID || webId;
   const androidId = GOOGLE_ANDROID_CLIENT_ID || webId;
 
+  if (!GOOGLE_SIGN_IN_ENABLED) {
+    return {
+      enabled: false,
+      inFlight: false,
+      ready: false,
+      signIn: async () => {
+        options?.onError?.(
+          "Google sign-in is not configured. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.",
+        );
+        return null;
+      },
+    };
+  }
+
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: webId,
     iosClientId: iosId,

@@ -52,6 +52,7 @@ import {
   type UserActivity,
   type UserRank,
 } from "@/lib/api";
+import { testPushNotification } from "@/lib/api";
 import {
   DEFAULT_PUSH_PREFERENCES,
   hasAnyPushPreference,
@@ -265,6 +266,7 @@ export default function ProfileScreen() {
   const [settings, setSettings] = useState<ProfileSettings>(DEFAULT_SETTINGS);
   const [pushSyncing, setPushSyncing] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
+  const [pushTesting, setPushTesting] = useState(false);
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
   const [usernameEditing, setUsernameEditing] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -811,6 +813,38 @@ export default function ProfileScreen() {
                 className={`self-start rounded-full px-4 py-2 ${pushSyncing ? "bg-indigo-300" : "bg-indigo-600"}`}
               >
                 <Text className="text-xs font-bold text-white">Sync this device</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  if (pushTesting) return;
+                  setPushTesting(true);
+                  setPushStatus(null);
+                  try {
+                    const res = await testPushNotification(
+                      "🔔 Test notification",
+                      "Push notifications are working on this device!",
+                    );
+                    if (res.result.sent > 0) {
+                      setPushStatus(`✅ Test sent to ${res.result.sent} device(s). Check your notifications!`);
+                    } else if (res.result.skipped > 0) {
+                      setPushStatus("⚠️ Skipped — check quiet hours or preference settings.");
+                    } else {
+                      setPushStatus(`❌ Not delivered (${res.result.errors[0] ?? "no token registered"})`);
+                    }
+                  } catch (err: any) {
+                    setPushStatus(`❌ ${err?.message ?? "Failed to send test push"}`);
+                  } finally {
+                    setPushTesting(false);
+                  }
+                }}
+                disabled={pushTesting || pushSyncing}
+                accessibilityRole="button"
+                accessibilityLabel="Send a test push notification"
+                className={`self-start rounded-full px-4 py-2 mt-2 ${pushTesting ? "bg-slate-300" : "bg-slate-700"}`}
+              >
+                <Text className="text-xs font-bold text-white">
+                  {pushTesting ? "Sending…" : "Send test push"}
+                </Text>
               </Pressable>
             </View>
 

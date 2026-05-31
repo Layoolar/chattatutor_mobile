@@ -1,3 +1,8 @@
+// Provide a minimal `process.env` declaration for environments without Node types
+declare const process: {
+  env: { [key: string]: string | undefined };
+};
+
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
   "http://localhost:4000";
